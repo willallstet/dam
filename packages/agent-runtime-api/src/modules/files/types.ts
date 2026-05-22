@@ -2,10 +2,10 @@ import type { Result } from "../../result.js";
 
 export interface FileReadResult {
   path: string;
-  content?: string;
-  binary?: boolean;
-  mimeType?: string;
-  mtimeMs?: number;
+  content: string;
+  binary: boolean;
+  mimeType: string;
+  mtimeMs: number;
 }
 
 export interface FileWriteOk {

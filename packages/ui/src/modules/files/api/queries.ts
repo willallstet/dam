@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { TRPCClientError } from "@trpc/client";
 
 import { queryClient } from "../../../query-client.js";
 import { createAgentTrpc } from "../../agents/agent-trpc.js";
@@ -23,12 +24,13 @@ function getAgentTrpc(agentId: string) {
   return client;
 }
 
-interface FileContent {
+export interface FileContent {
   path: string;
   content: string;
   binary?: boolean;
   mimeType?: string;
   mtimeMs?: number;
+  tooLarge?: boolean;
 }
 
 export function useFileTreeQuery(agentId: string | null) {
@@ -52,22 +54,40 @@ export function useFileContentQuery(
 ) {
   return useQuery({
     queryKey: fileKeys.content(agentId ?? "_none", path ?? "_none"),
-    queryFn: async () => {
-      const trpc = getAgentTrpc(agentId!);
-      const result = await trpc.files.read.query({ path: path! });
-      return {
-        path: result.path,
-        content: result.content ?? "",
-        binary: result.binary,
-        mimeType: result.mimeType,
-        mtimeMs: result.mtimeMs,
-      } satisfies FileContent;
-    },
+    queryFn: async () => readFileContent(agentId!, path!),
     enabled: !!agentId && !!path,
     refetchInterval: 2000,
     staleTime: 2000,
+    // No retry — transient errors resolve on the next 2 s poll tick, and we
+    // don't want React Query to mask NOT_FOUND with a delayed close-on-error.
     retry: 0,
   });
+}
+
+async function readFileContent(
+  agentId: string,
+  path: string,
+): Promise<FileContent> {
+  const trpc = getAgentTrpc(agentId);
+  try {
+    const result = await trpc.files.read.query({ path });
+    return {
+      path: result.path,
+      content: result.content,
+      binary: result.binary,
+      mimeType: result.mimeType,
+      mtimeMs: result.mtimeMs,
+    };
+  } catch (e) {
+    // Convert the transport-layer "too large" error back into a typed
+    // placeholder so the viewer can render its "file too large" state.
+    // The query-cache close-on-error path is reserved for genuinely
+    // gone files (rename, delete, NOT_FOUND).
+    if (e instanceof TRPCClientError && e.data?.code === "PAYLOAD_TOO_LARGE") {
+      return { path, content: "", binary: true, tooLarge: true };
+    }
+    throw e;
+  }
 }
 
 /**
@@ -81,17 +101,7 @@ export async function fetchFileContent(
 ): Promise<FileContent> {
   return queryClient.fetchQuery({
     queryKey: fileKeys.content(agentId, path),
-    queryFn: async () => {
-      const trpc = getAgentTrpc(agentId);
-      const result = await trpc.files.read.query({ path });
-      return {
-        path: result.path,
-        content: result.content ?? "",
-        binary: result.binary,
-        mimeType: result.mimeType,
-        mtimeMs: result.mtimeMs,
-      };
-    },
+    queryFn: async () => readFileContent(agentId, path),
   });
 }
 
@@ -185,9 +195,9 @@ export function useFileDeleteMutation(agentId: string | null) {
   });
 }
 
-/** Mirrors the MAX_FILE_SIZE cap in agent-runtime/src/modules/files.ts.
- *  Exported so callers (tree-panel upload button, chat composer) can reject
- *  oversized files before sending and surface a consistent message. */
+// Client-side pre-flight cap so oversized uploads fail in the UI before
+// hitting the wire. Server-side enforcement lives in agent-runtime and
+// surfaces as PAYLOAD_TOO_LARGE — this value can drift up to but not past it.
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
 const MESSAGE_UPLOAD_ROOT = ".uploads";

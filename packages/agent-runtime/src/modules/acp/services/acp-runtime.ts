@@ -132,7 +132,23 @@ interface SessionLog {
   truncated: boolean;
   /** Cached `session/load` response metadata, captured from the first
    * (cold) bootstrap response. Used to synthesize responses to subsequent
-   * `session/load` requests without forwarding to the agent. */
+   * `session/load` requests without forwarding to the agent.
+   *
+   * Invariant: `metadata !== null` means "the agent has this session live
+   * and our log mirrors what it would replay." When `maybeCloseIdleSession`
+   * tears the session down inside the agent, it MUST reset `metadata` to
+   * null AND clear `entries`, so the next access goes through cold-bootstrap
+   * and rehydrates both sides from disk.
+   *
+   * `null` represents two states: (a) the session was never bootstrapped, or
+   * (b) the most recent cold `session/load` failed — the cache-population
+   * guard in `handleAgentLine` skips writes when the agent's response has
+   * `result === undefined` (i.e. an error frame), so an error leaves
+   * `metadata` null. The bootstrap completion handler relies on exactly
+   * this to detect cold-load failure (`loadFailed = log.metadata === null`)
+   * and relay the agent's error to parked waiters. A future discriminated
+   * union (`{ status: "loaded"; data: unknown } | null`) would let the
+   * type system encode this directly. */
   metadata: unknown | null;
 }
 
@@ -552,24 +568,40 @@ export function createAcpRuntime(deps: AcpRuntimeDeps): AcpRuntime {
   }
 
   /**
-   * Close an SDK session when nothing is keeping it alive. Each open session
-   * pins a `claude` CLI subprocess (~300MB RSS) inside the agent pod; leaving
-   * them open after viewers leave accumulates until the pod OOMs.
+   * Tear a session down on both sides of the relay: send `session/close` to
+   * the agent (if it supports it) and drop the runtime's cache + per-channel
+   * cursors. The two halves MUST happen together — otherwise the cache lies
+   * to the UI about a session the agent has forgotten, and the next
+   * `session/prompt` comes back with "Session not found".
    *
-   * "Idle" means: no channel engaged with the session, no active or queued
-   * prompts, no agent→client requests still pending (permission prompts).
-   * The SDK respawns the subprocess on the next resume/load, so closing is
-   * safe — we just trade memory for a brief cold-start when a viewer returns.
+   * Fire-and-forget on the agent side: we don't register the outbound id, so
+   * the agent's response is silently dropped by `handleAgentLine`.
+   */
+  function tearDownSession(sessionId: string): void {
+    if (agent && !agentExited && sessionCloseSupported) {
+      agent.send({
+        jsonrpc: "2.0",
+        id: nextOutboundId++,
+        method: "session/close",
+        params: { sessionId },
+      });
+    }
+    sessionLogs.delete(sessionId);
+    for (const cursors of channelCursors.values()) cursors.delete(sessionId);
+  }
+
+  /**
+   * Refcount-driven reap: when no channel is engaged with the session and no
+   * work is in flight, tear it down to free the ~300MB CLI subprocess the
+   * SDK pins per session. The cold-bootstrap path rehydrates from disk on
+   * the next viewer's `session/resume`.
    *
-   * Fire-and-forget: we don't register the outbound id, so the agent's
-   * response is silently dropped by `handleAgentLine`.
+   * Skipped entirely when the agent doesn't advertise
+   * `sessionCapabilities.close`: we can't tell the agent to drop the session,
+   * so we also keep the cache so future resumes can still serve from memory.
    */
   function maybeCloseIdleSession(sessionId: string): void {
     if (!agent || agentExited) return;
-    // Skip if the agent didn't advertise `sessionCapabilities.close` in its
-    // initialize response. The session lives on inside the agent — keep the
-    // local log + cursors so a future session/resume can serve from cache
-    // without forcing a cold re-bootstrap the agent likely can't satisfy.
     if (!sessionCloseSupported) return;
     if (hasEngagedChannel(sessionId)) return;
     if (activePromptBySession.has(sessionId)) return;
@@ -582,13 +614,7 @@ export function createAcpRuntime(deps: AcpRuntimeDeps): AcpRuntime {
       if (req.sessionId === sessionId) return;
     }
 
-    const id = nextOutboundId++;
-    agent.send({
-      jsonrpc: "2.0",
-      id,
-      method: "session/close",
-      params: { sessionId },
-    });
+    tearDownSession(sessionId);
     deps.log?.(`closing idle session ${sessionId}`);
   }
 
@@ -750,12 +776,11 @@ export function createAcpRuntime(deps: AcpRuntimeDeps): AcpRuntime {
             mapping.method === "session/new" ||
             mapping.method === "session/fork" ||
             mapping.method === "session/load";
-          if (cacheable) {
+          const result = (frame as { result?: unknown }).result;
+          if (cacheable && result !== undefined) {
             const log = getOrCreateLog(sidForChannel);
             if (log.metadata === null) {
-              log.metadata = (frame as { result?: unknown }).result ?? {
-                sessionId: sidForChannel,
-              };
+              log.metadata = result;
             }
           }
         }
@@ -773,8 +798,23 @@ export function createAcpRuntime(deps: AcpRuntimeDeps): AcpRuntime {
           const boot = bootstrapBySession.get(sid);
           if (boot) {
             bootstrapBySession.delete(sid);
+            // Error responses leave metadata null (cache-population guard
+            // above requires `result !== undefined`); see SessionLog.metadata
+            // invariant for the full coupling.
+            const loadFailed = log.metadata === null;
             for (const waiter of boot.waiters) {
               if (!waiter.channel.isOpen()) continue;
+              if (loadFailed) {
+                // Relay the agent's error to the waiter under its own id
+                // — we have no cached metadata to synthesize a response,
+                // and a thrown error here would leave the waiter hanging.
+                const out = JSON.stringify({
+                  ...(frame as object),
+                  id: waiter.originalId,
+                });
+                waiter.channel.send(rewriteAuthError(out));
+                continue;
+              }
               if (waiter.kind === "load") {
                 serveLoadFromLog(waiter.channel, waiter.originalId, sid, log);
               } else {
@@ -1071,17 +1111,7 @@ export function createAcpRuntime(deps: AcpRuntimeDeps): AcpRuntime {
     },
 
     resetSession(sessionId) {
-      if (agent && !agentExited && sessionCloseSupported) {
-        agent.send({
-          jsonrpc: "2.0",
-          id: nextOutboundId++,
-          method: "session/close",
-          params: { sessionId },
-        });
-      }
-      // Always clear client-side state even if the agent didn't accept the close.
-      sessionLogs.delete(sessionId);
-      for (const cursors of channelCursors.values()) cursors.delete(sessionId);
+      tearDownSession(sessionId);
       deps.log?.(`reset session ${sessionId}`);
     },
 
