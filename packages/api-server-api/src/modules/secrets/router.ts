@@ -1,5 +1,10 @@
 import { t } from "../../trpc.js";
 import {
+  checkAgentBinding,
+  manageAgentsProcedure,
+  manageCredentialsProcedure,
+} from "../../auth-procedures.js";
+import {
   secretCreateGithubPatInputSchema,
   secretCreateInputSchema,
   secretDeleteInputSchema,
@@ -20,33 +25,39 @@ function messageForStatus(status: number): string {
 }
 
 export const secretsRouter = t.router({
-  list: t.procedure.query(({ ctx }) => ctx.secrets.list()),
+  // Credential lifecycle (CRUD on the credential itself) — credentials:manage.
+  list: manageCredentialsProcedure.query(({ ctx }) => ctx.secrets.list()),
 
-  create: t.procedure
+  create: manageCredentialsProcedure
     .input(secretCreateInputSchema)
     .mutation(({ ctx, input }) => ctx.secrets.create(input)),
 
-  createGithubPat: t.procedure
+  createGithubPat: manageCredentialsProcedure
     .input(secretCreateGithubPatInputSchema)
     .mutation(({ ctx, input }) => ctx.secrets.createGithubPat(input)),
 
-  updateGithubPat: t.procedure
+  updateGithubPat: manageCredentialsProcedure
     .input(secretUpdateGithubPatInputSchema)
     .mutation(({ ctx, input }) => ctx.secrets.updateGithubPat(input)),
 
-  update: t.procedure
+  update: manageCredentialsProcedure
     .input(secretUpdateInputSchema)
     .mutation(({ ctx, input }) => ctx.secrets.update(input)),
 
-  delete: t.procedure
+  delete: manageCredentialsProcedure
     .input(secretDeleteInputSchema)
     .mutation(({ ctx, input }) => ctx.secrets.delete(input.id)),
 
-  getAgentAccess: t.procedure
+  // Per-agent grant linkage is configuration of the agent, not the credential —
+  // agents:manage. ADR-047.
+  getAgentAccess: manageAgentsProcedure
     .input(secretGetAgentAccessInputSchema)
-    .query(({ ctx, input }) => ctx.secrets.getAgentAccess(input.agentId)),
+    .query(({ ctx, input }) => {
+      checkAgentBinding(ctx, input.agentId);
+      return ctx.secrets.getAgentAccess(input.agentId);
+    }),
 
-  testAnthropic: t.procedure
+  testAnthropic: manageCredentialsProcedure
     .input(secretTestAnthropicInputSchema)
     .mutation(async ({ input }) => {
       const headers: Record<string, string> = {
@@ -74,15 +85,16 @@ export const secretsRouter = t.router({
       }
     }),
 
-  setAgentAccess: t.procedure
+  setAgentAccess: manageAgentsProcedure
     .input(secretSetAgentAccessInputSchema)
-    .mutation(({ ctx, input }) =>
-      ctx.secrets.setAgentAccess(input.agentId, {
+    .mutation(({ ctx, input }) => {
+      checkAgentBinding(ctx, input.agentId);
+      return ctx.secrets.setAgentAccess(input.agentId, {
         secretIds: input.secretIds,
-      }),
-    ),
+      });
+    }),
 
-  listGrantedAgents: t.procedure
+  listGrantedAgents: manageCredentialsProcedure
     .input(secretListGrantedAgentsInputSchema)
     .query(({ ctx, input }) => ctx.secrets.listGrantedAgents(input.id)),
 });

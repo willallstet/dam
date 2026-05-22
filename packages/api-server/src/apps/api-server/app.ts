@@ -48,6 +48,7 @@ import type { Config } from "../../config.js";
 import { createAuth, ForbiddenError } from "./auth.js";
 import { createK8sSecretsPort } from "./../../modules/secrets/infrastructure/k8s-secrets-port.js";
 import { createSecretsService } from "./../../modules/secrets/services/secrets-service.js";
+import { composeApiKeysModule } from "./../../modules/api-keys/index.js";
 import { createK8sConnectionsPort } from "./../../modules/connections/infrastructure/k8s-connections-port.js";
 import { createConnectionsService } from "./../../modules/connections/services/connections-service.js";
 import { createAgentGrantsPort } from "./../../modules/agents/infrastructure/agent-grants-port.js";
@@ -126,12 +127,25 @@ export function startApiServerApp(deps: ApiServerAppDeps) {
     clientSecret: config.keycloakApiClientSecret,
   });
 
-  const auth = createAuth({
-    issuerUrl: `${config.keycloakExternalUrl}/realms/${config.keycloakRealm}`,
-    jwksUrl: `${config.keycloakUrl}/realms/${config.keycloakRealm}/protocol/openid-connect/certs`,
-    audience: config.keycloakApiAudience,
-    requiredRole: config.keycloakRequiredRole,
+  const apiKeysModule = composeApiKeysModule({
+    db,
+    isAgentOwnedBy: (agentId, ownerSub) =>
+      agentsRepo.isOwnedBy(agentId, ownerSub),
   });
+
+  const auth = createAuth(
+    {
+      issuerUrl: `${config.keycloakExternalUrl}/realms/${config.keycloakRealm}`,
+      jwksUrl: `${config.keycloakUrl}/realms/${config.keycloakRealm}/protocol/openid-connect/certs`,
+      audience: config.keycloakApiAudience,
+      requiredRole: config.keycloakRequiredRole,
+    },
+    {
+      verifyApiKey: apiKeysModule.validator,
+      verifyOwnerActive: async (sub) =>
+        (await userDirectory.resolveBySub(sub)) !== null,
+    },
+  );
 
   const slackOauthCallbackUrl =
     config.slackOauthCallbackUrl ??
@@ -578,6 +592,10 @@ export function startApiServerApp(deps: ApiServerAppDeps) {
       bus: redisBus,
       wrapperFrameSender,
     });
+    const apiKeys = apiKeysModule.createService({
+      ownerSub: user.sub,
+      callerKeyId: user.keyId,
+    });
 
     return fetchRequestHandler({
       endpoint: "/api/trpc",
@@ -594,6 +612,7 @@ export function startApiServerApp(deps: ApiServerAppDeps) {
         skills,
         approvals,
         egressRules,
+        apiKeys,
         user,
       }),
     });

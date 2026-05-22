@@ -1,4 +1,5 @@
 import { t } from "../../trpc.js";
+import { checkAgentBinding, runProcedure } from "../../auth-procedures.js";
 import {
   approvalApproveHostInputSchema,
   approvalApproveOnceInputSchema,
@@ -10,36 +11,37 @@ import {
 } from "./schemas.js";
 
 export const approvalsRouter = t.router({
-  listForOwner: t.procedure
+  listForOwner: runProcedure
     .input(approvalListForOwnerInputSchema)
     .query(({ ctx, input }) => ctx.approvals.listForOwner(input)),
 
-  listForInstance: t.procedure
+  listForInstance: runProcedure
     .input(approvalListForInstanceInputSchema)
-    .query(({ ctx, input }) =>
-      ctx.approvals.listForInstance(input.agentId, {
+    .query(({ ctx, input }) => {
+      checkAgentBinding(ctx, input.agentId);
+      return ctx.approvals.listForInstance(input.agentId, {
         limit: input.limit,
         status: input.status,
-      }),
-    ),
+      });
+    }),
 
-  approveOnce: t.procedure
+  approveOnce: runProcedure
     .input(approvalApproveOnceInputSchema)
     .mutation(({ ctx, input }) => ctx.approvals.approveOnce(input.id)),
 
-  approvePermanent: t.procedure
+  approvePermanent: runProcedure
     .input(approvalApprovePermanentInputSchema)
     .mutation(({ ctx, input }) => ctx.approvals.approvePermanent(input.id)),
 
-  approveHost: t.procedure
+  approveHost: runProcedure
     .input(approvalApproveHostInputSchema)
     .mutation(({ ctx, input }) => ctx.approvals.approveHost(input.id)),
 
-  denyForever: t.procedure
+  denyForever: runProcedure
     .input(approvalDenyForeverInputSchema)
     .mutation(({ ctx, input }) => ctx.approvals.denyForever(input.id)),
 
-  dismiss: t.procedure
+  dismiss: runProcedure
     .input(approvalDismissInputSchema)
     .mutation(({ ctx, input }) => ctx.approvals.dismiss(input.id)),
 });

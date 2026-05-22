@@ -11,6 +11,7 @@ export {
   agentSkillPublishes,
   egressRules,
   pendingApprovals,
+  apiKeys,
 } from "./schema.js";
 export {
   eq,

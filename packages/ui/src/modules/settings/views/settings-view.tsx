@@ -3,12 +3,14 @@ import { useState } from "react";
 
 import { getUser, logout } from "../../../auth.js";
 import { useStore } from "../../../store.js";
+import { ApiKeysList } from "../../api-keys/components/api-keys-list.js";
 
-type Tab = "appearance" | "account";
+type Tab = "appearance" | "account" | "api-keys";
 
 const tabs: { id: Tab; label: string }[] = [
   { id: "account", label: "Account" },
   { id: "appearance", label: "Appearance" },
+  { id: "api-keys", label: "API keys" },
 ];
 
 const themeOptions = [
@@ -93,6 +95,8 @@ export function SettingsView() {
             </div>
           </div>
         )}
+
+        {activeTab === "api-keys" && <ApiKeysList />}
 
         {activeTab === "account" && (
           <div className="anim-in">

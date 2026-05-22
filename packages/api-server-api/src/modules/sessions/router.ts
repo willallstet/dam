@@ -1,4 +1,5 @@
 import { t } from "../../trpc.js";
+import { checkAgentBinding, runProcedure } from "../../auth-procedures.js";
 import {
   sessionCreateInputSchema,
   sessionDeleteInputSchema,
@@ -10,52 +11,57 @@ import {
 } from "./schemas.js";
 
 export const sessionsRouter = t.router({
-  list: t.procedure
+  list: runProcedure
     .input(sessionListInputSchema)
-    .query(({ ctx, input }) =>
-      ctx.sessions.list(input.agentId, input.includeChannel),
-    ),
+    .query(({ ctx, input }) => {
+      checkAgentBinding(ctx, input.agentId);
+      return ctx.sessions.list(input.agentId, input.includeChannel);
+    }),
 
-  create: t.procedure
+  create: runProcedure
     .input(sessionCreateInputSchema)
-    .mutation(({ ctx, input }) =>
-      ctx.sessions.create(
+    .mutation(({ ctx, input }) => {
+      checkAgentBinding(ctx, input.agentId);
+      return ctx.sessions.create(
         input.sessionId,
         input.agentId,
         input.mode,
         input.type,
         input.scheduleId,
-      ),
-    ),
+      );
+    }),
 
-  setMode: t.procedure
+  setMode: runProcedure
     .input(sessionSetModeInputSchema)
-    .mutation(({ ctx, input }) =>
-      ctx.sessions.setMode(input.sessionId, input.agentId, input.mode),
-    ),
+    .mutation(({ ctx, input }) => {
+      checkAgentBinding(ctx, input.agentId);
+      return ctx.sessions.setMode(input.sessionId, input.agentId, input.mode);
+    }),
 
-  delete: t.procedure
+  delete: runProcedure
     .input(sessionDeleteInputSchema)
-    .mutation(({ ctx, input }) =>
-      ctx.sessions.delete(input.sessionId, input.agentId),
-    ),
+    .mutation(({ ctx, input }) => {
+      checkAgentBinding(ctx, input.agentId);
+      return ctx.sessions.delete(input.sessionId, input.agentId);
+    }),
 
-  listByScheduleId: t.procedure
+  listByScheduleId: runProcedure
     .input(sessionListByScheduleIdInputSchema)
     .query(({ ctx, input }) => ctx.sessions.listByScheduleId(input.scheduleId)),
 
-  resetByScheduleId: t.procedure
+  resetByScheduleId: runProcedure
     .input(sessionResetByScheduleIdInputSchema)
     .mutation(({ ctx, input }) =>
       ctx.sessions.resetByScheduleId(input.scheduleId),
     ),
 
-  resolveTerminal: t.procedure
+  resolveTerminal: runProcedure
     .input(sessionResolveTerminalInputSchema)
-    .mutation(({ ctx, input }) =>
-      ctx.sessions.resolveTerminal(input.agentId, input.strategy, {
+    .mutation(({ ctx, input }) => {
+      checkAgentBinding(ctx, input.agentId);
+      return ctx.sessions.resolveTerminal(input.agentId, input.strategy, {
         reset: input.reset,
         force: input.force,
-      }),
-    ),
+      });
+    }),
 });
