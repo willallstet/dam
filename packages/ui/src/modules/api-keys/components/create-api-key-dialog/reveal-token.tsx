@@ -31,18 +31,19 @@ export function RevealToken({ plaintext, onClose }: Props) {
           This is the only time the token will be shown. If you lose it,
           revoke this key and create a new one.
         </p>
-        <div
-          aria-live="polite"
-          className="flex items-stretch gap-2 p-3 rounded-lg bg-surface-raised border border-border-light font-mono text-[12px]"
-        >
+        <div className="flex items-stretch gap-2 p-3 rounded-lg bg-surface-raised border border-border-light font-mono text-[12px]">
           <code className="flex-1 break-all">{plaintext}</code>
           <button
             type="button"
             onClick={handleCopy}
+            aria-label={copied ? "Copied to clipboard" : "Copy to clipboard"}
             className="shrink-0 px-2 py-1 rounded hover:bg-surface text-text-secondary"
-            title="Copy to clipboard"
           >
-            {copied ? <Check size={16} /> : <Copy size={16} />}
+            {copied ? (
+              <Check size={16} aria-hidden />
+            ) : (
+              <Copy size={16} aria-hidden />
+            )}
           </button>
         </div>
         <p className="text-[12px] text-text-muted mt-3">

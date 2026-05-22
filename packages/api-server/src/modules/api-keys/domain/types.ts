@@ -12,10 +12,3 @@ export interface ApiKeyRow {
   lastUsedAt: Date | null;
   revokedAt: Date | null;
 }
-
-export interface ApiKeyValidation {
-  id: string;
-  ownerSub: string;
-  scopes: readonly Scope[];
-  agentIds: readonly string[] | "*";
-}

@@ -1,24 +1,27 @@
+import type { ApiKeyView } from "api-server-api";
 import { KeyRound } from "lucide-react";
 import { useState } from "react";
 
 import { useRevokeApiKey } from "../api/mutations.js";
 import { useApiKeys } from "../api/queries.js";
 import { ApiKeyRow } from "./api-key-row.js";
+import { ConfirmRevokeDialog } from "./confirm-revoke-dialog.js";
 import { CreateApiKeyDialog } from "./create-api-key-dialog/index.js";
 
+type RevokeTarget = Pick<ApiKeyView, "id" | "name">;
+
 export function ApiKeysList() {
-  const { data: keys, isLoading } = useApiKeys();
+  const { data: keys, isLoading, isError } = useApiKeys();
   const revokeApiKey = useRevokeApiKey();
   const [createOpen, setCreateOpen] = useState(false);
+  const [revokeTarget, setRevokeTarget] = useState<RevokeTarget | null>(null);
 
-  function handleRevoke(id: string, name: string) {
-    if (
-      window.confirm(
-        `Revoke "${name}"? The key will stop working immediately.`,
-      )
-    ) {
-      revokeApiKey.mutate({ id });
-    }
+  function handleConfirmRevoke() {
+    if (!revokeTarget) return;
+    revokeApiKey.mutate(
+      { id: revokeTarget.id },
+      { onSettled: () => setRevokeTarget(null) },
+    );
   }
 
   return (
@@ -40,7 +43,19 @@ export function ApiKeysList() {
 
       {isLoading && <p className="text-[13px] text-text-muted">Loading…</p>}
 
-      {!isLoading && keys && keys.length === 0 && (
+      {isError && (
+        <div className="p-4 rounded-xl border-2 border-danger-light bg-danger-light">
+          <p className="text-[13px] text-danger font-semibold mb-1">
+            Couldn't load API keys
+          </p>
+          <p className="text-[12px] text-text-secondary">
+            The server returned an error. Try again or check your network
+            connection.
+          </p>
+        </div>
+      )}
+
+      {!isLoading && !isError && keys && keys.length === 0 && (
         <div className="flex flex-col items-center gap-3 p-8 rounded-xl border-2 border-dashed border-border-light bg-surface">
           <KeyRound size={32} className="text-text-muted" />
           <p className="text-[13px] text-text-secondary">
@@ -50,14 +65,14 @@ export function ApiKeysList() {
         </div>
       )}
 
-      {!isLoading && keys && keys.length > 0 && (
+      {!isLoading && !isError && keys && keys.length > 0 && (
         <ul className="space-y-2">
           {keys.map((k) => (
             <ApiKeyRow
               key={k.id}
               apiKey={k}
-              onRevoke={handleRevoke}
-              revoking={revokeApiKey.isPending}
+              onRevoke={(id, name) => setRevokeTarget({ id, name })}
+              revoking={revokeApiKey.isPending && revokeTarget?.id === k.id}
             />
           ))}
         </ul>
@@ -65,6 +80,15 @@ export function ApiKeysList() {
 
       {createOpen && (
         <CreateApiKeyDialog onClose={() => setCreateOpen(false)} />
+      )}
+
+      {revokeTarget && (
+        <ConfirmRevokeDialog
+          apiKey={revokeTarget}
+          onConfirm={handleConfirmRevoke}
+          onCancel={() => setRevokeTarget(null)}
+          pending={revokeApiKey.isPending}
+        />
       )}
     </div>
   );

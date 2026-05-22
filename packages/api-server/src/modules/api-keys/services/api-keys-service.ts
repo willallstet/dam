@@ -1,4 +1,4 @@
-import crypto from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import type {
   ApiKeyCreateInput,
@@ -45,7 +45,7 @@ function rowToView(r: ApiKeyRow): ApiKeyView {
 }
 
 function generateKeyId(): string {
-  return `key-${crypto.randomBytes(4).toString("hex")}`;
+  return `key-${randomUUID()}`;
 }
 
 export function createApiKeysService(
