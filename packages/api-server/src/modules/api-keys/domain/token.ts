@@ -24,13 +24,21 @@ function base32(buf: Buffer): string {
   return out;
 }
 
-export function mintApiKeyToken(): { plaintext: string; hash: string } {
-  const plaintext = API_KEY_PREFIX + base32(randomBytes(RANDOM_BYTES));
-  return { plaintext, hash: hashApiKeyToken(plaintext) };
+export function mintApiKeyToken(): { token: string; hash: string } {
+  const token = API_KEY_PREFIX + base32(randomBytes(RANDOM_BYTES));
+  return { token, hash: hashApiKeyToken(token) };
 }
 
-export function hashApiKeyToken(plaintext: string): string {
-  return createHash("sha256").update(plaintext).digest("hex");
+/**
+ * Server-side digest of an API key token. The token is 256 bits of
+ * cryptographic randomness (32 random bytes, base32-encoded), not a
+ * user-chosen password — SHA-256 over a high-entropy random string is
+ * brute-force-infeasible. See ADR-047 § Alternatives Considered for
+ * why argon2id / bcrypt / scrypt would solve a problem we do not have.
+ */
+// lgtm[js/insufficient-password-hash]
+export function hashApiKeyToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
 }
 
 export function isApiKeyToken(token: string): boolean {

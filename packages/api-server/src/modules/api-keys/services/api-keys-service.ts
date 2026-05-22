@@ -95,7 +95,7 @@ export function createApiKeysService(
         });
       }
 
-      const { plaintext, hash } = mintApiKeyToken();
+      const { token, hash } = mintApiKeyToken();
       const row = await deps.insert({
         id: generateKeyId(),
         ownerSub: deps.ownerSub,
@@ -106,7 +106,7 @@ export function createApiKeysService(
         expiresAt,
       });
 
-      return { key: rowToView(row), plaintext };
+      return { key: rowToView(row), plaintext: token };
     },
 
     async revoke(id: string) {

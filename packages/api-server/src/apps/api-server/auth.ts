@@ -37,7 +37,7 @@ export interface AuthDeps {
    *  API-key tokens are rejected so deployments without the api-keys
    *  module wired in remain JWT-only. */
   verifyApiKey?: (
-    plaintext: string,
+    token: string,
   ) => Promise<Result<ValidatedApiKey, ApiKeyValidationFailure>>;
   /** Per-request owner-still-active check for API-key principals. Returns
    *  false if the owner no longer exists in Keycloak; the key is then
@@ -87,11 +87,11 @@ export function createAuth(config: AuthConfig, deps: AuthDeps = {}) {
     };
   }
 
-  async function verifyApiKey(plaintext: string): Promise<UserIdentity> {
+  async function verifyApiKey(token: string): Promise<UserIdentity> {
     if (!deps.verifyApiKey) {
       throw new UnauthorizedError("api keys not enabled");
     }
-    const result = await deps.verifyApiKey(plaintext);
+    const result = await deps.verifyApiKey(token);
     if (!result.ok) throw new UnauthorizedError(result.error);
 
     const key = result.value;

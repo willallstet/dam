@@ -7,16 +7,16 @@ import {
 } from "../../modules/api-keys/domain/token.js";
 
 describe("api-key token", () => {
-  it("mints prefixed plaintext + matching sha256 digest", () => {
-    const { plaintext, hash } = mintApiKeyToken();
-    expect(plaintext.startsWith(API_KEY_PREFIX)).toBe(true);
+  it("mints prefixed token + matching sha256 digest", () => {
+    const { token, hash } = mintApiKeyToken();
+    expect(token.startsWith(API_KEY_PREFIX)).toBe(true);
     expect(hash).toMatch(/^[0-9a-f]{64}$/);
-    expect(hashApiKeyToken(plaintext)).toBe(hash);
+    expect(hashApiKeyToken(token)).toBe(hash);
   });
 
   it("produces a base32 body (lowercase, no padding) after the prefix", () => {
-    const { plaintext } = mintApiKeyToken();
-    const body = plaintext.slice(API_KEY_PREFIX.length);
+    const { token } = mintApiKeyToken();
+    const body = token.slice(API_KEY_PREFIX.length);
     expect(body).toMatch(/^[a-z2-7]+$/);
     // 32 bytes -> ceil(32 * 8 / 5) = 52 base32 chars
     expect(body.length).toBe(52);
@@ -31,7 +31,7 @@ describe("api-key token", () => {
   it("mints distinct tokens across calls (entropy sanity)", () => {
     const a = mintApiKeyToken();
     const b = mintApiKeyToken();
-    expect(a.plaintext).not.toBe(b.plaintext);
+    expect(a.token).not.toBe(b.token);
     expect(a.hash).not.toBe(b.hash);
   });
 });

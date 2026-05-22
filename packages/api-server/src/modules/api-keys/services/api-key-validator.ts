@@ -18,14 +18,14 @@ export interface ApiKeyValidatorDeps {
 }
 
 export type ApiKeyValidator = (
-  plaintext: string,
+  token: string,
 ) => Promise<Result<ValidatedApiKey, ApiKeyValidationFailure>>;
 
 export function createApiKeyValidator(
   deps: ApiKeyValidatorDeps,
 ): ApiKeyValidator {
-  return async (plaintext) => {
-    const hash = hashApiKeyToken(plaintext);
+  return async (token) => {
+    const hash = hashApiKeyToken(token);
     const row = await deps.findByHash(hash);
     if (!row) return err("unknown");
     if (row.revokedAt) return err("revoked");
