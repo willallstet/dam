@@ -11,11 +11,11 @@ export interface TokenRevokeCommandDeps {
   buildTrpc: (host: string) => TrpcClient;
 }
 
-export function buildTokenRevokeCommand(
-  deps: TokenRevokeCommandDeps,
-): Command {
+export function buildTokenRevokeCommand(deps: TokenRevokeCommandDeps): Command {
   return new Command("revoke")
-    .description("Revoke an API key by ID. The key is immediately rejected on the next request.")
+    .description(
+      "Revoke an API key by ID. The key is immediately rejected on the next request.",
+    )
     .argument("<id>", "API key ID (e.g. key-abcdef12)")
     .action(async (id: string) => {
       const resolved = await deps.configService.getResolved({});

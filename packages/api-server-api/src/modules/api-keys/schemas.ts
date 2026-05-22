@@ -15,11 +15,7 @@ export const apiKeyCreateInputSchema = z.object({
   name: z.string().min(1).max(100),
   scopes: z.array(scopeSchema).min(1),
   agentIds: agentBindingSchema.default("*"),
-  expiresAt: z
-    .string()
-    .datetime()
-    .nullable()
-    .optional(),
+  expiresAt: z.string().datetime().nullable().optional(),
 });
 
 export const apiKeyRevokeInputSchema = z.object({

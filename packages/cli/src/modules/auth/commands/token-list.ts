@@ -13,7 +13,9 @@ export interface TokenListCommandDeps {
 
 export function buildTokenListCommand(deps: TokenListCommandDeps): Command {
   return new Command("list")
-    .description("List API keys owned by the current user (plaintext never shown)")
+    .description(
+      "List API keys owned by the current user (plaintext never shown)",
+    )
     .option("--json", "emit raw JSON")
     .action(async (opts: { json?: boolean }) => {
       const resolved = await deps.configService.getResolved({});
@@ -36,12 +38,9 @@ export function buildTokenListCommand(deps: TokenListCommandDeps): Command {
           return;
         }
         for (const k of keys) {
-          const binding =
-            k.agentIds === "*" ? "*" : k.agentIds.join(",");
+          const binding = k.agentIds === "*" ? "*" : k.agentIds.join(",");
           const exp = k.expiresAt ? `exp=${k.expiresAt}` : "exp=never";
-          const last = k.lastUsedAt
-            ? `last=${k.lastUsedAt}`
-            : "last=never";
+          const last = k.lastUsedAt ? `last=${k.lastUsedAt}` : "last=never";
           process.stdout.write(
             `${k.id}\t${k.name}\t[${k.scopes.join(",")}]\tagents=${binding}\t${exp}\t${last}\n`,
           );

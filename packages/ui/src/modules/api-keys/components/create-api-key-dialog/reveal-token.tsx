@@ -28,8 +28,8 @@ export function RevealToken({ plaintext, onClose }: Props) {
       </DialogHeader>
       <DialogBody>
         <p className="text-[13px] text-text-secondary mb-4">
-          This is the only time the token will be shown. If you lose it,
-          revoke this key and create a new one.
+          This is the only time the token will be shown. If you lose it, revoke
+          this key and create a new one.
         </p>
         <div className="flex items-stretch gap-2 p-3 rounded-lg bg-surface-raised border border-border-light font-mono text-[12px]">
           <code className="flex-1 break-all">{plaintext}</code>

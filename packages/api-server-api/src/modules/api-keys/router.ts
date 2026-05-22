@@ -1,8 +1,5 @@
 import { t } from "../../trpc.js";
-import {
-  apiKeyCreateInputSchema,
-  apiKeyRevokeInputSchema,
-} from "./schemas.js";
+import { apiKeyCreateInputSchema, apiKeyRevokeInputSchema } from "./schemas.js";
 
 export const apiKeysRouter = t.router({
   list: t.procedure.query(({ ctx }) => ctx.apiKeys.list()),

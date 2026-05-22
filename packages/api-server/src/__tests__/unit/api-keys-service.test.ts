@@ -53,10 +53,12 @@ interface ServiceFixture {
   repo: FakeRepo;
 }
 
-function createService(opts: {
-  callerKeyId?: string;
-  isAgentOwnedBy?: (agentId: string, ownerSub: string) => Promise<boolean>;
-} = {}): ServiceFixture {
+function createService(
+  opts: {
+    callerKeyId?: string;
+    isAgentOwnedBy?: (agentId: string, ownerSub: string) => Promise<boolean>;
+  } = {},
+): ServiceFixture {
   const repo = fakeRepo();
   const svc = createApiKeysService({
     ownerSub: "owner-1",

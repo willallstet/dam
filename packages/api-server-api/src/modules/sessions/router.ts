@@ -11,12 +11,10 @@ import {
 } from "./schemas.js";
 
 export const sessionsRouter = t.router({
-  list: runProcedure
-    .input(sessionListInputSchema)
-    .query(({ ctx, input }) => {
-      checkAgentBinding(ctx, input.agentId);
-      return ctx.sessions.list(input.agentId, input.includeChannel);
-    }),
+  list: runProcedure.input(sessionListInputSchema).query(({ ctx, input }) => {
+    checkAgentBinding(ctx, input.agentId);
+    return ctx.sessions.list(input.agentId, input.includeChannel);
+  }),
 
   create: runProcedure
     .input(sessionCreateInputSchema)

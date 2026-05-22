@@ -294,10 +294,7 @@ export { authConfigSchema } from "./modules/auth/types.js";
 export type { AuthConfig } from "./modules/auth/types.js";
 
 // API keys (ADR-047)
-export {
-  ALL_SCOPES,
-  API_KEY_PREFIX,
-} from "./modules/api-keys/types.js";
+export { ALL_SCOPES, API_KEY_PREFIX } from "./modules/api-keys/types.js";
 // auth-procedures.ts (runProcedure, manageAgentsProcedure, …, checkAgentBinding)
 // is deliberately NOT re-exported here. It calls `initTRPC.create()` at module
 // load via `t.procedure.use(...)`, which pulls @trpc/server into any consumer.

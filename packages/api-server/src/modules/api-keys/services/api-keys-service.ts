@@ -48,9 +48,7 @@ function generateKeyId(): string {
   return `key-${randomUUID()}`;
 }
 
-export function createApiKeysService(
-  deps: ApiKeysServiceDeps,
-): ApiKeysService {
+export function createApiKeysService(deps: ApiKeysServiceDeps): ApiKeysService {
   const requireBrowserFlow = () => {
     if (deps.callerKeyId !== undefined) {
       throw new TRPCError({

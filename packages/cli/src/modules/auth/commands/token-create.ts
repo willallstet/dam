@@ -12,9 +12,7 @@ export interface TokenCreateCommandDeps {
   buildTrpc: (host: string) => TrpcClient;
 }
 
-export function buildTokenCreateCommand(
-  deps: TokenCreateCommandDeps,
-): Command {
+export function buildTokenCreateCommand(deps: TokenCreateCommandDeps): Command {
   return new Command("create")
     .description(
       "Mint a new API key. The plaintext token is printed once on stderr — copy it now, it cannot be recovered.",
