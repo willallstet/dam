@@ -19,6 +19,25 @@ import {
 } from "./schemas.js";
 import type { Agent } from "./types.js";
 
+/**
+ * `agents.create` is the one mutation that has no `agentId` to match
+ * against the principal's binding — the agent doesn't exist yet. A
+ * key bound to a specific agent set must therefore not be able to
+ * create new agents, otherwise it expands its own blast radius beyond
+ * what the user intended at mint time. ADR-047.
+ */
+function rejectIfRestricted(ctx: {
+  user: { agentIds: readonly string[] | "*" };
+}): void {
+  if (ctx.user.agentIds !== "*") {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message:
+        "Agent creation requires a wildcard-bound key (or an interactive session). Restricted keys cannot mint new agents.",
+    });
+  }
+}
+
 function toView(agent: Agent) {
   return {
     id: agent.id,
@@ -58,6 +77,7 @@ export const agentsRouter = t.router({
   create: manageAgentsProcedure
     .input(agentCreateInputSchema)
     .mutation(async ({ ctx, input }) => {
+      rejectIfRestricted(ctx);
       const agent = await ctx.agents.create(input);
       return toView(agent);
     }),

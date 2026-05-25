@@ -17,10 +17,6 @@ const MAX_ACTIVE_KEYS_PER_OWNER = 50;
 
 export interface ApiKeysServiceDeps {
   ownerSub: string;
-  /** When the request principal is an API key, every api-keys.* procedure
-   *  rejects (ADR-047 — "API keys cannot manage API keys"). Pass the
-   *  current request's keyId, or undefined for browser-flow callers. */
-  callerKeyId: string | undefined;
   list: (ownerSub: string) => Promise<ApiKeyRow[]>;
   insert: (row: {
     id: string;
@@ -53,27 +49,21 @@ function generateKeyId(): string {
   return `key-${randomUUID()}`;
 }
 
+/**
+ * "API keys cannot manage API keys" is enforced by `browserOnlyProcedure`
+ * at the router layer (see `api-server-api/auth-procedures.ts`). The
+ * service therefore does not need to know how the caller authenticated
+ * — every request reaching this file is already guaranteed to come from
+ * an interactive Keycloak session.
+ */
 export function createApiKeysService(deps: ApiKeysServiceDeps): ApiKeysService {
-  const requireBrowserFlow = () => {
-    if (deps.callerKeyId !== undefined) {
-      throw new TRPCError({
-        code: "FORBIDDEN",
-        message:
-          "API keys cannot manage API keys. Use the web UI or `dam auth login`.",
-      });
-    }
-  };
-
   return {
     async list() {
-      requireBrowserFlow();
       const rows = await deps.list(deps.ownerSub);
       return rows.map(rowToView);
     },
 
     async create(input: ApiKeyCreateInput): Promise<ApiKeyCreateResult> {
-      requireBrowserFlow();
-
       // Bounded active-key count per owner. Race window between count
       // and insert is acceptable — the cap is for resource-bound
       // protection, not a strict invariant.
@@ -124,7 +114,6 @@ export function createApiKeysService(deps: ApiKeysServiceDeps): ApiKeysService {
     },
 
     async revoke(id: string) {
-      requireBrowserFlow();
       const ok = await deps.revoke(id, deps.ownerSub);
       if (!ok) throw new TRPCError({ code: "NOT_FOUND" });
     },

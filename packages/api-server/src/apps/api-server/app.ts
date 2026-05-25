@@ -670,10 +670,7 @@ export function startApiServerApp(deps: ApiServerAppDeps) {
       bus: redisBus,
       wrapperFrameSender,
     });
-    const apiKeys = apiKeysModule.createService({
-      ownerSub: user.sub,
-      callerKeyId: user.keyId,
-    });
+    const apiKeys = apiKeysModule.createService({ ownerSub: user.sub });
 
     return fetchRequestHandler({
       endpoint: "/api/trpc",

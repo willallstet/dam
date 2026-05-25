@@ -130,7 +130,7 @@ function scopeDescription(scope: Scope): string {
       return "Sessions, prompts, approvals, pod-files, terminal. Cannot change agent configuration.";
     case "agents:manage":
       return "Agent CRUD, schedules, channels, skills, egress rules, grant linkage.";
-    case "credentials:manage":
+    case "connections:manage":
       return "Connections and secrets — global credential lifecycle. Cannot grant them to agents.";
   }
 }

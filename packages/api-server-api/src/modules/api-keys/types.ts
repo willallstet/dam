@@ -10,7 +10,7 @@ export type Scope = z.infer<typeof scopeSchema>;
 export const ALL_SCOPES: readonly Scope[] = [
   "agents:run",
   "agents:manage",
-  "credentials:manage",
+  "connections:manage",
 ] as const;
 
 export type AgentBinding = readonly string[] | "*";

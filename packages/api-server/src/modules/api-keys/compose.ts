@@ -24,10 +24,7 @@ export function composeApiKeysModule(deps: {
   isAgentOwnedBy: (agentId: string, ownerSub: string) => Promise<boolean>;
 }): {
   validator: ApiKeyValidator;
-  createService: (perRequest: {
-    ownerSub: string;
-    callerKeyId: string | undefined;
-  }) => ApiKeysService;
+  createService: (perRequest: { ownerSub: string }) => ApiKeysService;
 } {
   const { db, isAgentOwnedBy } = deps;
   const list = listApiKeysByOwner(db);
@@ -41,10 +38,9 @@ export function composeApiKeysModule(deps: {
 
   return {
     validator,
-    createService: ({ ownerSub, callerKeyId }) =>
+    createService: ({ ownerSub }) =>
       createApiKeysService({
         ownerSub,
-        callerKeyId,
         list,
         insert,
         revoke,

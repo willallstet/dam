@@ -14,12 +14,12 @@ describe("api-key token", () => {
     expect(hashApiKeyToken(token)).toBe(hash);
   });
 
-  it("produces a base32 body (lowercase, no padding) after the prefix", () => {
+  it("produces a base64url body (alphabet + - _, no padding) after the prefix", () => {
     const { token } = mintApiKeyToken();
     const body = token.slice(API_KEY_PREFIX.length);
-    expect(body).toMatch(/^[a-z2-7]+$/);
-    // 32 bytes -> ceil(32 * 8 / 5) = 52 base32 chars
-    expect(body.length).toBe(52);
+    expect(body).toMatch(/^[A-Za-z0-9_-]+$/);
+    // 32 bytes -> ceil(32 * 8 / 6) = 43 base64url chars (no padding)
+    expect(body.length).toBe(43);
   });
 
   it("isApiKeyToken discriminates against JWTs", () => {

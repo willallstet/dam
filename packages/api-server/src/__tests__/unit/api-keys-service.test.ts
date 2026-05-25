@@ -55,14 +55,12 @@ interface ServiceFixture {
 
 function createService(
   opts: {
-    callerKeyId?: string;
     isAgentOwnedBy?: (agentId: string, ownerSub: string) => Promise<boolean>;
   } = {},
 ): ServiceFixture {
   const repo = fakeRepo();
   const svc = createApiKeysService({
     ownerSub: "owner-1",
-    callerKeyId: opts.callerKeyId,
     list: repo.list,
     insert: repo.insert,
     revoke: repo.revoke,
@@ -71,6 +69,10 @@ function createService(
   return { svc, repo };
 }
 
+// Note: "API keys cannot manage API keys" is enforced at the router via
+// `browserOnlyProcedure` (api-server-api/auth-procedures.ts), so the
+// service no longer carries `callerKeyId` and the corresponding tests
+// move to the router/middleware layer.
 describe("ApiKeysService", () => {
   it("create returns plaintext once + a view without secret material", async () => {
     const { svc } = createService();
@@ -105,38 +107,6 @@ describe("ApiKeysService", () => {
   it("revoke throws NOT_FOUND for unknown ids", async () => {
     const { svc } = createService();
     await expect(svc.revoke("key-nope")).rejects.toThrow(TRPCError);
-  });
-
-  describe("API keys cannot manage API keys", () => {
-    it("list rejects when caller authenticated via an api-key", async () => {
-      const { svc } = createService({ callerKeyId: "key-some" });
-      await expect(svc.list()).rejects.toThrow(TRPCError);
-    });
-
-    it("create rejects when caller authenticated via an api-key", async () => {
-      const { svc } = createService({ callerKeyId: "key-some" });
-      await expect(
-        svc.create({ name: "x", scopes: ["agents:run"], agentIds: "*" }),
-      ).rejects.toThrow(TRPCError);
-    });
-
-    it("revoke rejects when caller authenticated via an api-key", async () => {
-      const { svc, repo } = createService();
-      const { key } = await svc.create({
-        name: "x",
-        scopes: ["agents:run"],
-        agentIds: "*",
-      });
-      const svc2 = createApiKeysService({
-        ownerSub: "owner-1",
-        callerKeyId: "key-other",
-        list: repo.list,
-        insert: repo.insert,
-        revoke: repo.revoke,
-        isAgentOwnedBy: async () => true,
-      });
-      await expect(svc2.revoke(key.id)).rejects.toThrow(TRPCError);
-    });
   });
 
   describe("agent binding validation", () => {

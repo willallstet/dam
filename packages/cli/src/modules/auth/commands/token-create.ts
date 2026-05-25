@@ -20,7 +20,7 @@ export function buildTokenCreateCommand(deps: TokenCreateCommandDeps): Command {
     .requiredOption("--name <name>", "human-readable label")
     .option(
       "--scope <scope...>",
-      "permission scope (agents:run | agents:manage | credentials:manage); repeatable",
+      "permission scope (agents:run | agents:manage | connections:manage); repeatable",
     )
     .option(
       "--agent <agent-id...>",
@@ -48,7 +48,7 @@ export function buildTokenCreateCommand(deps: TokenCreateCommandDeps): Command {
           const r = scopeSchema.safeParse(s);
           if (!r.success) {
             process.stderr.write(
-              `error: unknown scope "${s}". Valid: agents:run, agents:manage, credentials:manage\n`,
+              `error: unknown scope "${s}". Valid: agents:run, agents:manage, connections:manage\n`,
             );
             process.exit(EXIT_INVALID_INPUT);
           }

@@ -6,7 +6,7 @@ Last verified: 2026-05-22
 
 - [ADR-005 — Gateway pattern for credentials](../adrs/005-credential-gateway.md) — the agent never sees a real upstream token; a gateway injects them on the wire
 - [ADR-015 — Multi-user authentication via Keycloak](../adrs/015-multi-user-auth.md) — Keycloak is the IdP; resources are owner-labelled
-- [ADR-047 — API keys with scopes for headless CLI use](../adrs/047-api-keys-headless-auth.md) — long-lived owner-scoped credentials with three scopes (`agents:run`, `agents:manage`, `credentials:manage`); shares the bearer slot with Keycloak JWTs
+- [ADR-047 — API keys with scopes for headless CLI use](../adrs/047-api-keys-headless-auth.md) — long-lived owner-scoped credentials with three scopes (`agents:run`, `agents:manage`, `connections:manage`); shares the bearer slot with Keycloak JWTs
 - [ADR-018 — Slack integration](../adrs/018-slack-integration.md) — identity linking and the per-Agent `allowedUsers` gate that decides who can drive a thread
 - [ADR-027 — Slack per-turn user impersonation](../adrs/027-slack-user-impersonation.md) — foreign repliers fork the Agent into a per-turn paired pod whose gateway mounts the replier's K8s credential Secrets
 - [ADR-033 — Envoy-based credential gateway](../adrs/033-envoy-credential-gateway.md) — Envoy mints per-Agent leaf certs, MITMs egress, and injects credential headers

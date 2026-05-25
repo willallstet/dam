@@ -33,8 +33,8 @@ export const manageAgentsProcedure = t.procedure.use(
 
 /** Global credential lifecycle: connections (OAuth) and secrets (user-supplied)
  *  CRUD. The grant linkage between a credential and an agent is `agents:manage`. */
-export const manageCredentialsProcedure = t.procedure.use(
-  requireScope("credentials:manage"),
+export const manageConnectionsProcedure = t.procedure.use(
+  requireScope("connections:manage"),
 );
 
 /** Read implicit in any agent-related scope. Use for list/get endpoints that
@@ -42,6 +42,23 @@ export const manageCredentialsProcedure = t.procedure.use(
 export const readAgentProcedure = t.procedure.use(
   requireScope("agents:run", "agents:manage"),
 );
+
+/**
+ * Procedure available **only** to principals authenticated via an interactive
+ * Keycloak session, not via API keys. The `api-keys.*` management surface
+ * (mint / list / revoke) sits here so an exfiltrated key cannot mint or
+ * revoke other keys — the single privilege-escalation barrier in ADR-047.
+ */
+export const browserOnlyProcedure = t.procedure.use(({ ctx, next }) => {
+  if (ctx.user.keyId !== undefined) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message:
+        "API keys cannot manage API keys. Use the web UI or `dam auth login`.",
+    });
+  }
+  return next();
+});
 
 /**
  * Per-call agent-binding guard. Call from a service or procedure handler

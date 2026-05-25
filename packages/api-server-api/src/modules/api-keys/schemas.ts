@@ -3,7 +3,7 @@ import { z } from "zod";
 export const scopeSchema = z.enum([
   "agents:run",
   "agents:manage",
-  "credentials:manage",
+  "connections:manage",
 ]);
 
 export const agentBindingSchema = z.union([

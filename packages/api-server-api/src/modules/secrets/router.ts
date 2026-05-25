@@ -2,7 +2,7 @@ import { t } from "../../trpc.js";
 import {
   checkAgentBinding,
   manageAgentsProcedure,
-  manageCredentialsProcedure,
+  manageConnectionsProcedure,
 } from "../../auth-procedures.js";
 import {
   secretCreateGithubPatInputSchema,
@@ -25,26 +25,26 @@ function messageForStatus(status: number): string {
 }
 
 export const secretsRouter = t.router({
-  // Credential lifecycle (CRUD on the credential itself) — credentials:manage.
-  list: manageCredentialsProcedure.query(({ ctx }) => ctx.secrets.list()),
+  // Credential lifecycle (CRUD on the credential itself) — connections:manage.
+  list: manageConnectionsProcedure.query(({ ctx }) => ctx.secrets.list()),
 
-  create: manageCredentialsProcedure
+  create: manageConnectionsProcedure
     .input(secretCreateInputSchema)
     .mutation(({ ctx, input }) => ctx.secrets.create(input)),
 
-  createGithubPat: manageCredentialsProcedure
+  createGithubPat: manageConnectionsProcedure
     .input(secretCreateGithubPatInputSchema)
     .mutation(({ ctx, input }) => ctx.secrets.createGithubPat(input)),
 
-  updateGithubPat: manageCredentialsProcedure
+  updateGithubPat: manageConnectionsProcedure
     .input(secretUpdateGithubPatInputSchema)
     .mutation(({ ctx, input }) => ctx.secrets.updateGithubPat(input)),
 
-  update: manageCredentialsProcedure
+  update: manageConnectionsProcedure
     .input(secretUpdateInputSchema)
     .mutation(({ ctx, input }) => ctx.secrets.update(input)),
 
-  delete: manageCredentialsProcedure
+  delete: manageConnectionsProcedure
     .input(secretDeleteInputSchema)
     .mutation(({ ctx, input }) => ctx.secrets.delete(input.id)),
 
@@ -57,7 +57,7 @@ export const secretsRouter = t.router({
       return ctx.secrets.getAgentAccess(input.agentId);
     }),
 
-  testAnthropic: manageCredentialsProcedure
+  testAnthropic: manageConnectionsProcedure
     .input(secretTestAnthropicInputSchema)
     .mutation(async ({ input }) => {
       const headers: Record<string, string> = {
@@ -94,7 +94,7 @@ export const secretsRouter = t.router({
       });
     }),
 
-  listGrantedAgents: manageCredentialsProcedure
+  listGrantedAgents: manageConnectionsProcedure
     .input(secretListGrantedAgentsInputSchema)
     .query(({ ctx, input }) => ctx.secrets.listGrantedAgents(input.id)),
 });

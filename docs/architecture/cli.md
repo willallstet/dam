@@ -68,7 +68,7 @@ For headless / CI use, set `DAM_TOKEN=<bearer>` — the CLI uses it verbatim and
 
 `dam auth token` is the sub-tree that mints, lists, and revokes API keys. Three commands:
 
-- **`dam auth token create --name <name> [--scope agents:run|agents:manage|credentials:manage…] [--agent <agent-id>…] [--expires <iso>] [--json]`** — calls `apiKeys.create` against the active host. The server returns the plaintext token *once*; the CLI prints it on stdout (so a pipeline can capture it) and warns on stderr that it cannot be recovered. Default scope is `agents:run`; default agent binding is `*` (every agent the owner owns now and in future). The mutation requires an interactive Keycloak session — API key principals cannot mint other API keys ([ADR-047](../adrs/047-api-keys-headless-auth.md)).
+- **`dam auth token create --name <name> [--scope agents:run|agents:manage|connections:manage…] [--agent <agent-id>…] [--expires <iso>] [--json]`** — calls `apiKeys.create` against the active host. The server returns the plaintext token *once*; the CLI prints it on stdout (so a pipeline can capture it) and warns on stderr that it cannot be recovered. Default scope is `agents:run`; default agent binding is `*` (every agent the owner owns now and in future). The mutation requires an interactive Keycloak session — API key principals cannot mint other API keys ([ADR-047](../adrs/047-api-keys-headless-auth.md)).
 - **`dam auth token list [--json]`** — emits id, name, scopes, agent binding, expiry, and last-used timestamp for every non-revoked key the caller owns. Plaintext is never displayed.
 - **`dam auth token revoke <id>`** — soft-deletes by stamping `revoked_at`. The key is rejected on the very next request — the validator filters revoked rows at lookup time.
 
