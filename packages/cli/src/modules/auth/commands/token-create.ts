@@ -15,7 +15,7 @@ export interface TokenCreateCommandDeps {
 export function buildTokenCreateCommand(deps: TokenCreateCommandDeps): Command {
   return new Command("create")
     .description(
-      "Mint a new API key. The plaintext token is printed once on stderr — copy it now, it cannot be recovered.",
+      "Mint a new API key. The plaintext token is shown once — copy it now, it cannot be recovered. Default: token printed on stderr (so `> file` redirects don't silently capture it). With --json: token printed on stdout inside the JSON payload, for scripted capture.",
     )
     .requiredOption("--name <name>", "human-readable label")
     .option(
@@ -30,7 +30,10 @@ export function buildTokenCreateCommand(deps: TokenCreateCommandDeps): Command {
       "--expires <iso>",
       "expiration timestamp in ISO 8601, e.g. 2026-12-31T00:00:00Z",
     )
-    .option("--json", "emit the result as JSON (still warns on stderr)")
+    .option(
+      "--json",
+      "emit the result as JSON on stdout (token included). Warning still goes to stderr.",
+    )
     .action(
       async (opts: {
         name: string;
