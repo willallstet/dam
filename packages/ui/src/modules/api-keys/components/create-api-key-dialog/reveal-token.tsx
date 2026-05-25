@@ -12,13 +12,23 @@ interface Props {
   onClose: () => void;
 }
 
+type CopyState = "idle" | "copied" | "failed";
+
 export function RevealToken({ plaintext, onClose }: Props) {
-  const [copied, setCopied] = useState(false);
+  const [copyState, setCopyState] = useState<CopyState>("idle");
 
   async function handleCopy() {
-    await navigator.clipboard.writeText(plaintext);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(plaintext);
+      setCopyState("copied");
+      setTimeout(() => setCopyState("idle"), 2000);
+    } catch {
+      // clipboard API rejects in non-secure contexts and when the
+      // browser blocks programmatic copy. Surface the failure so the
+      // user falls back to manual select.
+      setCopyState("failed");
+      setTimeout(() => setCopyState("idle"), 3000);
+    }
   }
 
   return (
@@ -36,19 +46,28 @@ export function RevealToken({ plaintext, onClose }: Props) {
           <button
             type="button"
             onClick={handleCopy}
-            aria-label={copied ? "Copied to clipboard" : "Copy to clipboard"}
+            aria-label={
+              copyState === "copied"
+                ? "Copied to clipboard"
+                : "Copy to clipboard"
+            }
             className="shrink-0 px-2 py-1 rounded hover:bg-surface text-text-secondary"
           >
-            {copied ? (
+            {copyState === "copied" ? (
               <Check size={16} aria-hidden />
             ) : (
               <Copy size={16} aria-hidden />
             )}
           </button>
         </div>
+        {copyState === "failed" && (
+          <p className="text-[12px] text-danger mt-2">
+            Couldn't copy automatically. Select the token above and copy it
+            manually.
+          </p>
+        )}
         <p className="text-[12px] text-text-muted mt-3">
-          Use with the CLI:{" "}
-          <code>export DAM_TOKEN={plaintext.slice(0, 16)}…</code>
+          Use with the CLI: <code>export DAM_TOKEN=damkey_…</code>
         </p>
       </DialogBody>
       <DialogFooter>

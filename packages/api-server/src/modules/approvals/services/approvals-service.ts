@@ -4,6 +4,7 @@ import type {
   ApprovalsService,
   EgressRuleSource,
 } from "api-server-api";
+import { TRPCError } from "@trpc/server";
 import type { ApprovalsRepository } from "../infrastructure/approvals-repository.js";
 import type { PendingApprovalRow } from "../domain/types.js";
 import { randomUUID } from "node:crypto";
@@ -51,6 +52,19 @@ export interface CreateApprovalsServiceDeps {
   wrapperFrameSender: WrapperFrameSender;
   isAgentOwnedBy(agentId: string, ownerSub: string): Promise<boolean>;
   ownerSub: string;
+  /** Per-key agent allowlist (ADR-047). `"*"` for browser-flow callers
+   *  and API keys with wildcard binding. Restricted keys see only their
+   *  bound agents, and any mutation against a non-bound row throws
+   *  FORBIDDEN — single-agent IDs are not opaque to callers, so silent
+   *  no-op would leak the bound agent set by timing. */
+  agentBinding: readonly string[] | "*";
+}
+
+function matchesBinding(
+  binding: readonly string[] | "*",
+  agentId: string,
+): boolean {
+  return binding === "*" || binding.includes(agentId);
 }
 
 function toView(row: PendingApprovalRow): ApprovalView {
@@ -74,6 +88,12 @@ async function loadOwned(
 ): Promise<PendingApprovalRow | null> {
   const row = await deps.repo.getPending(id);
   if (!row || row.ownerSub !== deps.ownerSub) return null;
+  if (!matchesBinding(deps.agentBinding, row.agentId)) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: `API key is not bound to agent ${row.agentId}`,
+    });
+  }
   return row;
 }
 
@@ -83,7 +103,10 @@ export function createApprovalsService(
   return {
     async listForOwner(opts) {
       const rows = await deps.repo.listPendingForOwner(deps.ownerSub, opts);
-      return rows.map(toView);
+      const visible = rows.filter((r) =>
+        matchesBinding(deps.agentBinding, r.agentId),
+      );
+      return visible.map(toView);
     },
 
     async listForInstance(agentId, opts) {

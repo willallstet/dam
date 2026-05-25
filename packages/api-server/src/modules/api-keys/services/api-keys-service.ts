@@ -10,6 +10,11 @@ import type {
 import type { ApiKeyRow } from "../domain/types.js";
 import { mintApiKeyToken } from "../domain/token.js";
 
+/** Active-keys cap per owner. Hard upper bound to keep the table bounded
+ *  even under a misbehaving / scripted caller; well above any reasonable
+ *  human-issued count (typical CI pipelines use 1–3 keys per user). */
+const MAX_ACTIVE_KEYS_PER_OWNER = 50;
+
 export interface ApiKeysServiceDeps {
   ownerSub: string;
   /** When the request principal is an API key, every api-keys.* procedure
@@ -68,6 +73,17 @@ export function createApiKeysService(deps: ApiKeysServiceDeps): ApiKeysService {
 
     async create(input: ApiKeyCreateInput): Promise<ApiKeyCreateResult> {
       requireBrowserFlow();
+
+      // Bounded active-key count per owner. Race window between count
+      // and insert is acceptable — the cap is for resource-bound
+      // protection, not a strict invariant.
+      const existing = await deps.list(deps.ownerSub);
+      if (existing.length >= MAX_ACTIVE_KEYS_PER_OWNER) {
+        throw new TRPCError({
+          code: "TOO_MANY_REQUESTS",
+          message: `Maximum ${MAX_ACTIVE_KEYS_PER_OWNER} active API keys per owner. Revoke an unused one first.`,
+        });
+      }
 
       const agentIds: readonly string[] | null =
         input.agentIds === "*" ? null : input.agentIds;

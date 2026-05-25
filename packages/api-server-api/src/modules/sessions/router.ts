@@ -45,13 +45,23 @@ export const sessionsRouter = t.router({
 
   listByScheduleId: runProcedure
     .input(sessionListByScheduleIdInputSchema)
-    .query(({ ctx, input }) => ctx.sessions.listByScheduleId(input.scheduleId)),
+    .query(async ({ ctx, input }) => {
+      // Resolve the schedule's agent before any data read so a restricted
+      // key cannot fan out across schedules outside its binding (ADR-047).
+      const sched = await ctx.schedules.get(input.scheduleId);
+      if (!sched) return [];
+      checkAgentBinding(ctx, sched.agentId);
+      return ctx.sessions.listByScheduleId(input.scheduleId);
+    }),
 
   resetByScheduleId: runProcedure
     .input(sessionResetByScheduleIdInputSchema)
-    .mutation(({ ctx, input }) =>
-      ctx.sessions.resetByScheduleId(input.scheduleId),
-    ),
+    .mutation(async ({ ctx, input }) => {
+      const sched = await ctx.schedules.get(input.scheduleId);
+      if (!sched) return;
+      checkAgentBinding(ctx, sched.agentId);
+      return ctx.sessions.resetByScheduleId(input.scheduleId);
+    }),
 
   resolveTerminal: runProcedure
     .input(sessionResolveTerminalInputSchema)

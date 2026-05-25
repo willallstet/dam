@@ -69,9 +69,11 @@ export function buildTokenCreateCommand(deps: TokenCreateCommandDeps): Command {
             ...(opts.expires ? { expiresAt: opts.expires } : {}),
           });
 
-          // Plaintext goes to stdout when --json is set so scripts can pipe it;
-          // otherwise it lands on stdout too — but accompanied by a stderr
-          // warning the user can see in an interactive terminal.
+          // Plaintext path is asymmetric on purpose:
+          //   --json: token on stdout inside the JSON payload, for scripts.
+          //   interactive: token on STDERR alongside the warning, so a
+          //     casual `dam auth token create … > file` doesn't capture the
+          //     secret into a file the user didn't realize would hold it.
           if (opts.json) {
             process.stdout.write(
               `${JSON.stringify({ ...result.key, plaintext: result.plaintext })}\n`,
@@ -80,7 +82,7 @@ export function buildTokenCreateCommand(deps: TokenCreateCommandDeps): Command {
             process.stderr.write(
               "⚠ Copy this token now. It will never be shown again.\n",
             );
-            process.stdout.write(`${result.plaintext}\n`);
+            process.stderr.write(`${result.plaintext}\n`);
             process.stderr.write(`id: ${result.key.id}\n`);
             process.stderr.write(`name: ${result.key.name}\n`);
             process.stderr.write(`scopes: ${result.key.scopes.join(", ")}\n`);
