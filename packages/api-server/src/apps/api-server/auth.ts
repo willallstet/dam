@@ -33,9 +33,9 @@ export interface AuthConfig {
 }
 
 export interface AuthDeps {
-  /** Validates a `damkey_…` token (ADR-047). Optional — when omitted,
-   *  API-key tokens are rejected so deployments without the api-keys
-   *  module wired in remain JWT-only. */
+  /** Validates a `pk_…` (platform key) token, see ADR-047. Optional —
+   *  when omitted, API-key tokens are rejected so deployments without
+   *  the api-keys module wired in remain JWT-only. */
   verifyApiKey?: (
     token: string,
   ) => Promise<Result<ValidatedApiKey, ApiKeyValidationFailure>>;

@@ -36,8 +36,8 @@ export function ApiKeysList() {
         </button>
       </div>
       <p className="text-[14px] text-text-secondary mb-6">
-        Long-lived tokens for headless / CI use. Set <code>DAM_TOKEN</code> to
-        the value when calling the CLI. Plaintext is shown once on creation and
+        Long-lived tokens for headless / CI use. Pass the value as a bearer
+        credential when calling the API. Plaintext is shown once on creation and
         never recoverable.
       </p>
 

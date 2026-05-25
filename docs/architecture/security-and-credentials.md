@@ -135,7 +135,7 @@ scoped, so the api-server enforces ownership directly when reading and
 writing.
 
 For headless / CI use, the CLI accepts a long-lived **API key** in the
-same `Authorization: Bearer` slot, distinguished by a `damkey_` prefix
+same `Authorization: Bearer` slot, distinguished by a `pk_` prefix
 ([ADR-047](../adrs/047-api-keys-headless-auth.md)). API keys carry the
 owner's `sub`, a subset of permission scopes, and an optional agent
 allowlist; the bearer middleware dispatches by prefix and produces the

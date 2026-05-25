@@ -23,7 +23,7 @@ describe("api-key token", () => {
   });
 
   it("isApiKeyToken discriminates against JWTs", () => {
-    expect(isApiKeyToken("damkey_abc")).toBe(true);
+    expect(isApiKeyToken("pk_abc")).toBe(true);
     expect(isApiKeyToken("eyJhbGciOiJSUzI1NiIs")).toBe(false);
     expect(isApiKeyToken("")).toBe(false);
   });

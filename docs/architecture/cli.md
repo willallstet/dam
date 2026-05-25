@@ -9,7 +9,7 @@ Last verified: 2026-05-22
 - [#73 — Import local project context into agent workspace](https://github.com/dam-agents/dam/issues/73) — the `dam import` verb that uploads local files and folders into an Agent.
 - [#254 — Granular file ops over the agent-runtime proxy](https://github.com/dam-agents/dam/issues/254) — the `dam file` group (`get`, `put`, `list`) for single-file workspace operations.
 - [ADR-046 — Eliminate Instance, collapse into Agent](../adrs/046-eliminate-instance.md) — the CLI addresses Agents (not Instances); a single `dam agent` group covers the lifecycle.
-- [ADR-047 — API keys with scopes for headless CLI use](../adrs/047-api-keys-headless-auth.md) — the `dam auth token` sub-tree; `DAM_TOKEN` now accepts API keys (`damkey_…` prefix) in the same Bearer slot the JWT flow already uses.
+- [ADR-047 — API keys with scopes for headless CLI use](../adrs/047-api-keys-headless-auth.md) — the `dam auth token` sub-tree; `DAM_TOKEN` now accepts API keys (`pk_…` prefix) in the same Bearer slot the JWT flow already uses.
 
 ## Overview
 
@@ -62,7 +62,7 @@ The `auth` module exposes a single application service — **`TokenProvider`** �
 
 Concurrent writes to the auth store are not coordinated in v1. The store mutates `auth.toml` via read-merge-rename: the rename is atomic, but the surrounding sequence is not, so two `dam` processes that overlap (e.g. an interactive `dam auth login --server foo` running while a `TokenProvider` refresh for `bar` fires in another terminal) can each persist their own merged snapshot, and the later rename silently reverts the other host's entry. The failure surfaces later as an unexpected `session-expired` prompt — recoverable with `dam auth login`, but on a host the user may not remember touching. Same-host concurrent refreshes cost at most one forced re-login. A proper fix (per-host files or cross-process locking) is deferred — v1 targets solo, single-terminal use.
 
-For headless / CI use, set `DAM_TOKEN=<bearer>` — the CLI uses it verbatim and bypasses `auth.toml`. There is no `--token` flag (avoids leaking tokens into shell history and `ps`). The variable accepts either a Keycloak access token or a Platform API key (`damkey_…` prefix, [ADR-047](../adrs/047-api-keys-headless-auth.md)); the CLI does not branch — the server's bearer middleware dispatches by prefix.
+For headless / CI use, set `DAM_TOKEN=<bearer>` — the CLI uses it verbatim and bypasses `auth.toml`. There is no `--token` flag (avoids leaking tokens into shell history and `ps`). The variable accepts either a Keycloak access token or a Platform API key (`pk_…` prefix, [ADR-047](../adrs/047-api-keys-headless-auth.md)); the CLI does not branch — the server's bearer middleware dispatches by prefix.
 
 ### API keys (`dam auth token`)
 

@@ -16,7 +16,7 @@ CI pipelines and orchestration layers need a long-lived, server-managed, scopabl
 
 ## Decision
 
-**Introduce API Keys as a new owner-scoped credential type, with three permission scopes, and let the existing `Authorization: Bearer` slot carry either credential type — discriminated by a `damkey_` prefix.** Plaintext is returned once on create and never persisted; everything at rest is a SHA-256 digest. The CLI's `DAM_TOKEN` env var continues to accept either credential type — no CLI branching.
+**Introduce API Keys as a new owner-scoped credential type, with three permission scopes, and let the existing `Authorization: Bearer` slot carry either credential type — discriminated by a `pk_` prefix.** Plaintext is returned once on create and never persisted; everything at rest is a SHA-256 digest. The CLI's `DAM_TOKEN` env var continues to accept either credential type — no CLI branching.
 
 The load-bearing rules:
 
@@ -28,10 +28,10 @@ The load-bearing rules:
 - **Agent binding.** Each key has an allowlist of Agent IDs; default `*` covers every agent the owner owns now and in the future. Binding is per-Agent (not per-Instance) — [ADR-046](046-eliminate-instance.md) already collapsed those into one user-facing thing.
 - **Optional expiry.** Keys can be long-lived in v1 — no mandatory rotation.
 - **Plaintext returned once on create.** The CLI / UI surface the value once at creation time and never again; the server stores only the SHA-256 digest. There is no recovery path.
-- **Shared Bearer slot, prefix-based dispatch.** Request-edge middleware reads `Authorization: Bearer <token>`. If `<token>` begins with `damkey_`, the API-key validator runs (digest lookup → expiry check → load scopes and agent binding); otherwise the existing JWT validator runs. Both produce a unified `AuthContext { sub, scopes, agentIds | "*", keyId? }` downstream tRPC consumes.
+- **Shared Bearer slot, prefix-based dispatch.** Request-edge middleware reads `Authorization: Bearer <token>`. If `<token>` begins with `pk_`, the API-key validator runs (digest lookup → expiry check → load scopes and agent binding); otherwise the existing JWT validator runs. Both produce a unified `AuthContext { sub, scopes, agentIds | "*", keyId? }` downstream tRPC consumes.
 - **Per-request scope re-evaluation.** Every authenticated request re-checks the owner's current effective permissions against the key's declared scopes. If the owner is demoted or disabled, all their keys lose those scopes immediately — no explicit revocation job, no cleanup. The key row itself remains; it just stops authorizing the protected procedures.
 - **API keys cannot manage API keys.** The `api-keys.*` tRPC procedures reject any request where `AuthContext.keyId` is set. Creating, listing, and revoking keys requires an interactive Keycloak session. An exfiltrated key cannot mint others, cannot revoke others, and cannot extend its own life — the safety property worth paying for.
-- **Token format.** `damkey_` + base32-encoded 32 bytes of cryptographic randomness. SHA-256 at rest — argon2id solves low-entropy passwords; high-entropy random tokens don't need it.
+- **Token format.** `pk_` + base32-encoded 32 bytes of cryptographic randomness. SHA-256 at rest — argon2id solves low-entropy passwords; high-entropy random tokens don't need it.
 
 CLI surface (this ADR commits only to the *shape*; flags belong in the implementation):
 
@@ -55,9 +55,9 @@ dam auth token revoke <id>
 
 ## Consequences
 
-- **Easier:** CI pipelines work without a browser — `export DAM_TOKEN=damkey_…` is the entire ergonomic. Exfiltrated keys have a bounded blast radius: an `agents:run` key cannot rewrite egress rules, install skills, or rotate the user's GitHub PAT. Offboarding a user shrinks all their keys atomically via per-request scope re-evaluation; no key-revocation sweep job is needed when permissions change. The `damkey_` prefix is immediately distinguishable from JWTs in logs, making credential-misuse detection straightforward.
+- **Easier:** CI pipelines work without a browser — `export DAM_TOKEN=pk_…` is the entire ergonomic. Exfiltrated keys have a bounded blast radius: an `agents:run` key cannot rewrite egress rules, install skills, or rotate the user's GitHub PAT. Offboarding a user shrinks all their keys atomically via per-request scope re-evaluation; no key-revocation sweep job is needed when permissions change. The `pk_` prefix is immediately distinguishable from JWTs in logs, making credential-misuse detection straightforward.
 - **Harder:** Every existing tRPC procedure now has to declare which scope it requires; the absence of a current procedure-builder pattern means the first PR introduces one. The bearer middleware grows a branch. Plaintext-only-once changes the UX shape on the create dialog — users who lose the value must rotate the key. The cross-module scope mapping (Schedules under `agents:manage`, Approvals under `agents:run`, etc.) must stay in sync with future feature additions; the ubiquitous-language entry below pins it.
-- **Committed-to:** The `damkey_` prefix is forever — changing it later requires a parallel-validator window. The three scope names (`agents:run`, `agents:manage`, `credentials:manage`) enter the ubiquitous language and gate every networked verb. API keys cannot manage API keys — bypassing this rule destroys the only privilege-escalation barrier the design has. Plaintext-only-once means there is no recovery path; lost keys are revoked-and-recreated.
+- **Committed-to:** The `pk_` prefix is forever — changing it later requires a parallel-validator window. The three scope names (`agents:run`, `agents:manage`, `credentials:manage`) enter the ubiquitous language and gate every networked verb. API keys cannot manage API keys — bypassing this rule destroys the only privilege-escalation barrier the design has. Plaintext-only-once means there is no recovery path; lost keys are revoked-and-recreated.
 
 ## Related ADRs
 

@@ -8,7 +8,7 @@ function row(overrides: Partial<ApiKeyRow> = {}): ApiKeyRow {
     id: "key-deadbeef",
     ownerSub: "owner-1",
     name: "ci",
-    hash: hashApiKeyToken("damkey_xxx"),
+    hash: hashApiKeyToken("pk_xxx"),
     scopes: ["agents:run"],
     agentIds: null,
     expiresAt: null,
@@ -25,7 +25,7 @@ describe("createApiKeyValidator", () => {
       findByHash: async () => row(),
       touchLastUsed: async () => {},
     });
-    const r = await validate("damkey_xxx");
+    const r = await validate("pk_xxx");
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.value.agentIds).toBe("*");
@@ -39,7 +39,7 @@ describe("createApiKeyValidator", () => {
       findByHash: async () => null,
       touchLastUsed: async () => {},
     });
-    const r = await validate("damkey_nope");
+    const r = await validate("pk_nope");
     expect(r).toEqual({ ok: false, error: "unknown" });
   });
 
@@ -48,7 +48,7 @@ describe("createApiKeyValidator", () => {
       findByHash: async () => row({ revokedAt: new Date() }),
       touchLastUsed: async () => {},
     });
-    const r = await validate("damkey_xxx");
+    const r = await validate("pk_xxx");
     expect(r).toEqual({ ok: false, error: "revoked" });
   });
 
@@ -58,7 +58,7 @@ describe("createApiKeyValidator", () => {
       findByHash: async () => row({ expiresAt: yesterday }),
       touchLastUsed: async () => {},
     });
-    const r = await validate("damkey_xxx");
+    const r = await validate("pk_xxx");
     expect(r).toEqual({ ok: false, error: "expired" });
   });
 
@@ -67,7 +67,7 @@ describe("createApiKeyValidator", () => {
       findByHash: async () => row({ agentIds: ["agent-1", "agent-2"] }),
       touchLastUsed: async () => {},
     });
-    const r = await validate("damkey_xxx");
+    const r = await validate("pk_xxx");
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.value.agentIds).toEqual(["agent-1", "agent-2"]);
   });
@@ -78,7 +78,7 @@ describe("createApiKeyValidator", () => {
       findByHash: async () => row(),
       touchLastUsed: touch,
     });
-    await validate("damkey_xxx");
+    await validate("pk_xxx");
     // The touch is fire-and-forget — give it a microtask to settle.
     await new Promise((r) => setImmediate(r));
     expect(touch).toHaveBeenCalledWith("key-deadbeef");
@@ -91,7 +91,7 @@ describe("createApiKeyValidator", () => {
         throw new Error("db down");
       },
     });
-    const r = await validate("damkey_xxx");
+    const r = await validate("pk_xxx");
     expect(r.ok).toBe(true);
   });
 });

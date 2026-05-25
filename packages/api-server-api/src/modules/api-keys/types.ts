@@ -41,5 +41,8 @@ export interface ApiKeysService {
 }
 
 /** Token prefix that distinguishes an API key from a Keycloak JWT in the
- *  shared `Authorization: Bearer` slot. See ADR-047. */
-export const API_KEY_PREFIX = "damkey_";
+ *  shared `Authorization: Bearer` slot. See ADR-047. Brand-neutral on
+ *  purpose — `platform` is the codename in the codebase, so `pk_`
+ *  ("platform key") is permanent and survives any rebrand of the
+ *  user-visible product name. */
+export const API_KEY_PREFIX = "pk_";

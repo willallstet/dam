@@ -67,7 +67,8 @@ export function RevealToken({ plaintext, onClose }: Props) {
           </p>
         )}
         <p className="text-[12px] text-text-muted mt-3">
-          Use with the CLI: <code>export DAM_TOKEN=damkey_…</code>
+          Use as the bearer credential when calling the API. See the CLI
+          documentation for the exact environment variable name.
         </p>
       </DialogBody>
       <DialogFooter>

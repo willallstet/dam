@@ -79,7 +79,7 @@ describe("ApiKeysService", () => {
       scopes: ["agents:run"],
       agentIds: "*",
     });
-    expect(result.plaintext.startsWith("damkey_")).toBe(true);
+    expect(result.plaintext.startsWith("pk_")).toBe(true);
     expect(result.key.name).toBe("ci");
     expect(result.key.agentIds).toBe("*");
     expect(result.key.scopes).toEqual(["agents:run"]);
