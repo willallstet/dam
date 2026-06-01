@@ -1,4 +1,4 @@
-FROM registry.access.redhat.com/hi/nodejs:22-builder AS base
+FROM registry.access.redhat.com/hi/nodejs:24-builder AS base
 
 USER root
 ENV PATH="/app/node_modules/.bin:$PATH"
@@ -27,8 +27,30 @@ COPY packages/agent-runtime/ packages/agent-runtime/
 
 RUN pnpm --filter agent-runtime build
 
-# Materialize a flat, prod-only runtime tree from agent-runtime/package.json; strip devDeps so downstream `npm install` doesn't choke on workspace:* specifiers.
-RUN pnpm --filter agent-runtime deploy --legacy --prod --node-linker=hoisted /deploy \
+# Materialize a flat, prod-only runtime tree for agent-runtime. The contract
+# packages (agent-runtime-api, api-server-api) are inlined into dist by tsup
+# (noExternal) and live in devDependencies, so --prod omits them from node_modules.
+#
+# Honor the lockfile: the `--legacy` deploy implementation re-resolves the graph
+# WITHOUT the lockfile, drifting to the latest published versions on every build
+# (non-reproducible, and it trips the repo's `no-downgrade` trust policy when a
+# transitive dep's publisher signal changes). pnpm 10's modern deploy uses the
+# lockfile but guards against non-injected workspaces — satisfy that guard with
+# a command-scoped `inject-workspace-packages=true` (no prod workspace deps are
+# actually injected here) rather than flipping the global config, which would
+# turn workspace symlinks into copies for everyone's dev install.
+#
+# Use the authored manifest, not pnpm's: modern deploy rewrites package.json
+# dependency versions to pnpm's peer-resolved form (e.g.
+# `@trpc/server: 11.16.0(typescript@6.0.2)`), which is invalid npm syntax and
+# breaks the plain `npm install` in derived agent images (claude-code,
+# google-workspace) with EINVALIDTAGNAME. agent-runtime's own package.json
+# already carries clean semver ranges, so overwrite the deployed manifest with
+# it and drop devDependencies — keeping deploy's lockfile-pinned node_modules
+# but an npm-consumable manifest.
+RUN npm_config_inject_workspace_packages=true \
+    pnpm --filter agent-runtime deploy --frozen-lockfile --prod --node-linker=hoisted /deploy \
+    && cp packages/agent-runtime/package.json /deploy/package.json \
     && (cd /deploy && pnpm pkg delete devDependencies)
 
 # -builder base: agent images extending this need dnf+npm install at build time.
@@ -55,6 +77,11 @@ RUN chmod +x /usr/local/bin/harness-chat /usr/local/bin/harness-terminal
 COPY packages/platform-base/skills/ /app/working-dir/.agents/skills/
 COPY packages/platform-base/working-dir/.claude.json /app/working-dir/.claude.json
 COPY packages/platform-base/working-dir/.claude/settings.json /app/working-dir/.claude/settings.json
+# ADR-052: runtime-manifest.yaml — every agent image ships one. Lives
+# at /app/runtime-manifest.yaml (outside working-dir/) so the init
+# seed cp -rn ... $HOME doesn't shadow it on the user's PV. Per-image
+# overrides are COPY'd later in derived Dockerfiles.
+COPY packages/platform-base/runtime-manifest.yaml /app/runtime-manifest.yaml
 RUN mkdir -p /app/working-dir/.claude /app/working-dir/.pi/agent \
     && ln -s ../.agents/skills /app/working-dir/.claude/skills \
     && ln -s ../../.agents/skills /app/working-dir/.pi/agent/skills \

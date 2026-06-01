@@ -148,13 +148,13 @@ export function composeAuthModule(opts: AuthModuleOptions): AuthModule {
   );
   authParent.addCommand(buildStatusCommand({ authService }));
 
-  // `dam auth token` — API key management (ADR-047). The sub-tree reuses the
+  // `dam auth token` — API key management (ADR-056). The sub-tree reuses the
   // shared tRPC client built on this module's own TokenProvider, so the auth
   // module owns the wiring without taking a dependency on the package compose.
   const buildTrpc: (host: string) => TrpcClient = (host) =>
     createTrpcClient({ host, tokenProvider });
   const tokenParent = new Command("token").description(
-    "Manage API keys for headless / CI use (ADR-047)",
+    "Manage API keys for headless / CI use (ADR-056)",
   );
   tokenParent.addCommand(
     buildTokenCreateCommand({

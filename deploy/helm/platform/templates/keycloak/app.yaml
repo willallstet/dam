@@ -56,7 +56,8 @@ spec:
               done
       containers:
         - name: keycloak
-          image: {{ .Values.keycloak.image }}
+          image: "{{ .Values.keycloak.image.repository }}:{{ .Values.keycloak.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.keycloak.image.pullPolicy | default "IfNotPresent" }}
           args: [{{ if eq .Values.scheme "https" }}"start"{{ else }}"start-dev"{{ end }}, "--features=token-exchange,admin-fine-grained-authz:v1"]
           ports:
             - containerPort: {{ .Values.keycloak.port }}
@@ -82,6 +83,12 @@ spec:
                   key: KEYCLOAK_ADMIN_PASSWORD
             - name: KC_HEALTH_ENABLED
               value: "true"
+            - name: KC_LOG_CONSOLE_OUTPUT
+              value: {{ .Values.keycloak.log.consoleOutput | quote }}
+            - name: KC_SPI_EVENTS_LISTENER_JBOSS_LOGGING_SUCCESS_LEVEL
+              value: {{ .Values.keycloak.events.successLevel | quote }}
+            - name: KC_SPI_EVENTS_LISTENER_JBOSS_LOGGING_ERROR_LEVEL
+              value: {{ .Values.keycloak.events.errorLevel | quote }}
             - name: KC_HTTP_PORT
               value: {{ .Values.keycloak.port | quote }}
             - name: KC_HOSTNAME

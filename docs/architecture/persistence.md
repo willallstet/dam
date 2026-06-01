@@ -8,7 +8,8 @@ Last verified: 2026-05-22
 - [ADR-006 — ConfigMaps over CRDs](../adrs/006-configmaps-over-crds.md) — domain resources are namespace-scoped ConfigMaps with a single-writer-per-key split
 - [ADR-017 — DB-backed ACP sessions](../adrs/017-db-backed-sessions.md) — Postgres holds session metadata so the UI works even when pods are hibernated
 - [ADR-046 — Eliminate Instance, collapse into Agent](../adrs/046-eliminate-instance.md) — the merged `agent` ConfigMap is the sole resource per Agent and carries both `spec.yaml` and `status.yaml`
-- [ADR-047 — API keys with scopes for headless CLI use](../adrs/047-api-keys-headless-auth.md) — API keys are a Postgres-resident credential type; one row per key, hashed at rest
+- [ADR-056 — API keys with scopes for headless CLI use](../adrs/056-api-keys-headless-auth.md) — API keys are a Postgres-resident credential type; one row per key, hashed at rest
+- [ADR-8 — Usage tracking with pseudonymized identifiers](../adrs/048-usage-tracking.md) — append-only activity log + agent mirror table, with HMAC-pseudonymized `sub` values at the write boundary
 
 ## Overview
 
@@ -65,8 +66,9 @@ Postgres carries application state the api-server owns end-to-end — anything t
 
 - **session metadata** ([ADR-017](../adrs/017-db-backed-sessions.md)) — Platform enriches each ACP session with metadata the protocol does not carry: a source-type discriminator (UI-initiated vs. channel-initiated vs. schedule-driven), the owning Agent, the linked schedule when applicable, and creation time. The DB is the source of truth for these enrichments; the agent runtime owns the conversation itself. The sessions list reads enrichments straight from the DB and overlays live ACP data (title, last update) only when the pod is running. A row is written when the session is first prompted — chat sessions by the ACP relay, channel and schedule sessions by their respective adapters — so sessions created but never used leave no metadata behind.
 - **channel routing** — bindings between external chat surfaces and the Agent/session they map to. Owned by [channels](channels.md).
-- **identity and auth** — links between channel-side identities and platform users, the auth allow-list, and API keys for headless CLI use ([ADR-047](../adrs/047-api-keys-headless-auth.md)). Owned by [security-and-credentials](security-and-credentials.md).
+- **identity and auth** — links between channel-side identities and platform users, the auth allow-list, and API keys for headless CLI use ([ADR-056](../adrs/056-api-keys-headless-auth.md)). Owned by [security-and-credentials](security-and-credentials.md).
 - **skills catalog** — connected sources, per-Agent install records, and publish history. Owned by [skills](skills.md).
+- **activity log + agent mirror** — append-only event log (`activity_events`), per-sub role flags (`actor_roles`), and the K8s↔Postgres agent ownership mirror (`agents`). Pseudonymized `actor_sub` and `owner_sub` columns at the write boundary. Owned by [usage-tracking](usage-tracking.md).
 
 The api-server is the sole writer for all of it. The controller does not touch Postgres — its bookkeeping lives on `status.yaml` of the ConfigMap it owns. The authoritative schema and migrations live in [`packages/db/`](../../packages/db/).
 

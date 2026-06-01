@@ -51,10 +51,19 @@ This directory contains ADRs for the Platform project.
 | [044](044-provider-twin-secrets.md)           | Provider twin secrets — multiple injection points per credential | @xjacka |
 | [045](045-file-import.md) | File import — bundled, atomic, one-shot | @janjeliga |
 | [046](046-eliminate-instance.md)              | Eliminate Instance — collapse into Agent | @jezekra1 |
+| [047](047-terms-of-use-acceptance.md)         | Terms of Use acceptance — api-server gate with hash-as-proof | @tomkis |
+| [048](048-usage-tracking.md)                  | Usage tracking — append-only activity log with pseudonymized identifiers | @jjeliga |
+| [049](049-lazy-workspace-fetch.md)            | Lazy per-directory workspace fetch | @tomkis |
+| [050](050-platform-reserved-paths.md)         | Platform-reserved paths | @tomkis |
+| [051](051-connections-and-contributions.md)   | Connections, Connection Templates, and Contributions — unified configuration model | @jezekra1 |
+| [052](052-runtime-channel.md)                 | Unified runtime channel — state snapshot plus event stream between api-server and agent-runtime | @jezekra1 |
+| [053](053-runtime-outbox-worker.md)           | Transactional outbox + worker for runtime-channel delivery | @jezekra1 |
+| [054](054-keycloak-theme.md)                  | Branded Keycloak login via Keycloakify-built custom image | @kapetr |
+| [055](055-agent-owned-session-metadata.md)    | Agent-owned session metadata via ACP `_meta`; server sessions become a Redis cache | @jezekra1 |
+| [056](056-api-keys-headless-auth.md)          | API keys with scopes for headless CLI use | @xjacka |
 
 ## Drafts
 
 | Draft | Title | Owner |
 |-------|-------|-------|
 | [DRAFT](DRAFT-multi-agent.md) | Multi-agent collaboration — isolated instances with shared artifacts | @tomkis |
-| [047](047-api-keys-headless-auth.md) | API keys with scopes for headless CLI use | @xjacka |

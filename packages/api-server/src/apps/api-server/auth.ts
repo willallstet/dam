@@ -30,10 +30,18 @@ export interface AuthConfig {
   audience?: string;
   /** Realm role required to access the API (e.g. "platform-access"). If unset, all authenticated users are allowed. */
   requiredRole?: string;
+  /** OIDC client ID used by the web UI; matched against JWT `azp` to attribute requests to surface="ui". */
+  uiClientId: string;
+  /** OIDC client ID used by the dam CLI; matched against JWT `azp` to attribute requests to surface="cli". */
+  cliClientId: string;
+  /** Realm role marking a user as core team (used by activity tracking to
+   *  exclude internal traffic from pilot metrics). Empty/unset = nobody is
+   *  flagged core. Read from JWT `realm_access.roles` at verify time. */
+  coreRole?: string;
 }
 
 export interface AuthDeps {
-  /** Validates a `pk_…` (platform key) token, see ADR-047. Optional —
+  /** Validates a `pk_…` (platform key) token, see ADR-056. Optional —
    *  when omitted, API-key tokens are rejected so deployments without
    *  the api-keys module wired in remain JWT-only. */
   verifyApiKey?: (
@@ -52,6 +60,7 @@ const PUBLIC_PATHS = new Set([
   "/api/oauth/callback",
   "/api/slack/oauth/callback",
   "/api/telegram/oauth/callback",
+  "/api/terms",
 ]);
 
 const PUBLIC_PATH_PREFIXES = ["/api/brand/"];
@@ -59,35 +68,41 @@ const PUBLIC_PATH_PREFIXES = ["/api/brand/"];
 export function createAuth(config: AuthConfig, deps: AuthDeps = {}) {
   const JWKS = createRemoteJWKSet(new URL(config.jwksUrl));
 
-  async function verifyJwt(token: string): Promise<UserIdentity> {
+  async function verifyJwt(
+    token: string,
+  ): Promise<{ user: UserIdentity; azp: string; roles: string[] }> {
     const { payload } = await jwtVerify(token, JWKS, {
       issuer: config.issuerUrl,
       audience: config.audience,
       algorithms: ["RS256"],
     });
 
-    if (config.requiredRole) {
-      const realmAccess = (payload as Record<string, unknown>).realm_access as
-        | { roles?: string[] }
-        | undefined;
-      if (!realmAccess?.roles?.includes(config.requiredRole)) {
-        throw new ForbiddenError(config.requiredRole);
-      }
+    const claims = payload as Record<string, unknown>;
+    const realmAccess = claims.realm_access as { roles?: string[] } | undefined;
+    const roles = realmAccess?.roles ?? [];
+
+    if (config.requiredRole && !roles.includes(config.requiredRole)) {
+      throw new ForbiddenError(config.requiredRole);
     }
 
     return {
-      sub: payload.sub!,
-      preferredUsername:
-        ((payload as Record<string, unknown>).preferred_username as string) ??
-        payload.sub!,
-      // Browser-flow principals carry full effective scopes; agent binding
-      // is unconstrained (wildcard). The API-key path narrows both.
-      scopes: ALL_SCOPES,
-      agentIds: "*",
+      user: {
+        sub: payload.sub!,
+        preferredUsername:
+          (claims.preferred_username as string) ?? payload.sub!,
+        // Browser-flow principals carry full effective scopes; agent binding
+        // is unconstrained (wildcard). The API-key path narrows both.
+        scopes: ALL_SCOPES,
+        agentIds: "*",
+      },
+      azp: typeof claims.azp === "string" ? claims.azp : "",
+      roles,
     };
   }
 
-  async function verifyApiKey(token: string): Promise<UserIdentity> {
+  async function verifyApiKey(
+    token: string,
+  ): Promise<{ user: UserIdentity; azp: string; roles: string[] }> {
     if (!deps.verifyApiKey) {
       throw new UnauthorizedError("api keys not enabled");
     }
@@ -95,7 +110,7 @@ export function createAuth(config: AuthConfig, deps: AuthDeps = {}) {
     if (!result.ok) throw new UnauthorizedError(result.error);
 
     const key = result.value;
-    // Per-request owner-active check (ADR-047). When the owner has been
+    // Per-request owner-active check (ADR-056). When the owner has been
     // deleted in Keycloak, any of their keys lose authority immediately —
     // no revocation sweep is needed. Role demotion within Keycloak is a
     // weaker form of this check and is deferred to a follow-up.
@@ -105,15 +120,23 @@ export function createAuth(config: AuthConfig, deps: AuthDeps = {}) {
     }
 
     return {
-      sub: key.ownerSub,
-      preferredUsername: key.ownerSub,
-      scopes: key.scopes,
-      agentIds: key.agentIds,
-      keyId: key.id,
+      user: {
+        sub: key.ownerSub,
+        preferredUsername: key.ownerSub,
+        scopes: key.scopes,
+        agentIds: key.agentIds,
+        keyId: key.id,
+      },
+      // API-key principals are not browser/CLI OIDC clients and carry no realm
+      // roles — they attribute as surface="other" and never count as core.
+      azp: "",
+      roles: [],
     };
   }
 
-  async function verify(token: string): Promise<UserIdentity> {
+  async function verify(
+    token: string,
+  ): Promise<{ user: UserIdentity; azp: string; roles: string[] }> {
     return isApiKeyToken(token) ? verifyApiKey(token) : verifyJwt(token);
   }
 
@@ -131,17 +154,21 @@ export function createAuth(config: AuthConfig, deps: AuthDeps = {}) {
 
     const token = authHeader.slice(7);
     try {
-      const user = await verify(token);
+      const { user, azp, roles } = await verify(token);
       c.set("user", user);
-      // The userJwt field on UserAuthenticated is consumed by downstream
-      // modules that need to forward the principal's Keycloak JWT to other
-      // services (e.g. token-exchange). API-key principals don't have one
-      // — emit with an empty string so the event still fires for telemetry
-      // and so JWT-only consumers stay backwards compatible.
+      c.set("roles", roles);
+      const surface =
+        azp === config.uiClientId
+          ? "ui"
+          : azp === config.cliClientId
+            ? "cli"
+            : "other";
+      const isCore = config.coreRole ? roles.includes(config.coreRole) : false;
       emit({
         type: EventType.UserAuthenticated,
         userSub: user.sub,
-        userJwt: user.keyId ? "" : token,
+        surface,
+        isCore,
       });
       return next();
     } catch (err) {

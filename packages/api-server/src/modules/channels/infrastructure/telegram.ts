@@ -15,6 +15,12 @@ import {
   generatePkce,
   type KeycloakOAuthConfig,
 } from "./identity-oauth.js";
+import {
+  EventType,
+  emit as defaultEmit,
+  type DomainEvent,
+  type TurnOutcome,
+} from "../../../events.js";
 
 export interface TelegramOAuthPending {
   instanceName: string;
@@ -33,6 +39,10 @@ export interface TelegramThreadsRepo {
   ) => Promise<void>;
   list: (agentId: string) => Promise<string[]>;
   revoke: (agentId: string, threadId: string) => Promise<void>;
+  getAuthorizedBy: (
+    agentId: string,
+    threadId: string,
+  ) => Promise<string | null>;
 }
 
 export interface ChannelConversation {
@@ -126,6 +136,9 @@ export function createTelegramWorker(
     ) => Promise<{ sessionId: string } | null>;
     touch: (sessionId: string) => Promise<void>;
   },
+  isTermsAccepted: (sub: string) => Promise<boolean>,
+  uiBaseUrl: string,
+  emit: (event: DomainEvent) => void = defaultEmit,
 ): TelegramWorker {
   const bots = new Map<string, InstanceBot>();
   const lastThread = new Map<string, Thread>();
@@ -150,6 +163,7 @@ export function createTelegramWorker(
       `Message: ${text}`,
     ].join("\n");
 
+    let outcome: TurnOutcome = "failure";
     try {
       await agents().ensureReady(instanceName);
       const acp = createAcpClient({ namespace, instanceName });
@@ -159,6 +173,7 @@ export function createTelegramWorker(
         try {
           await acp.sendPrompt(text, { resumeSessionId: existing.sessionId });
           await threadSessions.touch(existing.sessionId);
+          outcome = "success";
           return;
         } catch (err) {
           process.stderr.write(
@@ -175,9 +190,23 @@ export function createTelegramWorker(
             thread.id,
           ),
       });
+      outcome = "success";
     } catch (err) {
       process.stderr.write(`[telegram:${instanceName}] ACP error: ${err}\n`);
+    } finally {
+      emitTurn(instanceName, outcome);
     }
+  }
+
+  function emitTurn(instanceName: string, outcome: TurnOutcome) {
+    // Only the instance owner runs /login, so we can't attribute Telegram turns to a real actor.
+    emit({
+      type: EventType.ChannelTurnRelayed,
+      channel: "telegram",
+      agentId: instanceName,
+      actorSub: null,
+      outcome,
+    });
   }
 
   async function buildBot(
@@ -296,6 +325,18 @@ export function createTelegramWorker(
         if (thread.isDM) {
           await thread.post(
             "This conversation isn't authorized. An admin needs to send /login.",
+          );
+        }
+        return;
+      }
+      const authorizedBy = await threads.getAuthorizedBy(
+        instanceName,
+        thread.id,
+      );
+      if (authorizedBy && !(await isTermsAccepted(authorizedBy))) {
+        if (thread.isDM) {
+          await thread.post(
+            `Open ${uiBaseUrl} to accept the Terms of Use before continuing.`,
           );
         }
         return;

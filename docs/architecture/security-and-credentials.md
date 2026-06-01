@@ -1,12 +1,12 @@
 # Security and credentials
 
-Last verified: 2026-05-22
+Last verified: 2026-05-29
 
 ## Motivated by
 
 - [ADR-005 — Gateway pattern for credentials](../adrs/005-credential-gateway.md) — the agent never sees a real upstream token; a gateway injects them on the wire
 - [ADR-015 — Multi-user authentication via Keycloak](../adrs/015-multi-user-auth.md) — Keycloak is the IdP; resources are owner-labelled
-- [ADR-047 — API keys with scopes for headless CLI use](../adrs/047-api-keys-headless-auth.md) — long-lived owner-scoped credentials with three scopes (`agents:run`, `agents:manage`, `connections:manage`); shares the bearer slot with Keycloak JWTs
+- [ADR-056 — API keys with scopes for headless CLI use](../adrs/056-api-keys-headless-auth.md) — long-lived owner-scoped credentials with three scopes (`agents:run`, `agents:manage`, `connections:manage`); shares the bearer slot with Keycloak JWTs
 - [ADR-018 — Slack integration](../adrs/018-slack-integration.md) — identity linking and the per-Agent `allowedUsers` gate that decides who can drive a thread
 - [ADR-027 — Slack per-turn user impersonation](../adrs/027-slack-user-impersonation.md) — foreign repliers fork the Agent into a per-turn paired pod whose gateway mounts the replier's K8s credential Secrets
 - [ADR-033 — Envoy-based credential gateway](../adrs/033-envoy-credential-gateway.md) — Envoy mints per-Agent leaf certs, MITMs egress, and injects credential headers
@@ -136,13 +136,47 @@ writing.
 
 For headless / CI use, the CLI accepts a long-lived **API key** in the
 same `Authorization: Bearer` slot, distinguished by a `pk_` prefix
-([ADR-047](../adrs/047-api-keys-headless-auth.md)). API keys carry the
+([ADR-056](../adrs/056-api-keys-headless-auth.md)). API keys carry the
 owner's `sub`, a subset of permission scopes, and an optional agent
 allowlist; the bearer middleware dispatches by prefix and produces the
 same downstream authenticated-principal shape — sub, scopes, agent
 binding, and an optional key id. API keys cannot mint or revoke other
 API keys — the management surface rejects any request whose principal
 was authenticated via a key, so exfiltrated keys cannot escalate.
+
+## Keycloak event logging
+
+Keycloak is also an audit event source. It emits login and admin events
+to pod stdout via its built-in `jboss-logging` event listener, so they
+ride the same cluster log pipeline as every other pod log out to the
+external log service. The listener's level is set through Keycloak's
+per-listener SPI knobs rather than a broad `org.keycloak` log-category
+override: successes surface at `info`, errors at `warn`. Production pods
+emit structured JSON; local dev overrides the console format to plain
+text for a readable `cluster:logs`.
+
+Persistence is split by event class:
+
+- **Login events** (LOGIN, LOGOUT, LOGIN_ERROR, token refresh, account
+  changes, …) are *not* written to the Keycloak database. The listener
+  fires independently of DB-store gating, so the events still reach
+  stdout; the external log service is the source of truth for the
+  authentication audit trail, and Postgres is spared the high-volume
+  write.
+- **Admin events** (any change made through the admin REST API or
+  console) fire on the same listener, so their metadata — who acted, on
+  which resource, from where — reaches stdout and the external log
+  service alongside login events. That metadata is also recorded to
+  Postgres (low volume), but the full request body is *not*
+  (`adminEventsDetailsEnabled` is off): stored bodies would otherwise
+  capture sensitive payloads — plaintext credentials on user-create /
+  user-update flows — and Keycloak retains admin events indefinitely with
+  no built-in expiration. The log line never carries the request body, so
+  the external log pipeline, not the Keycloak database, is the audit
+  source of truth.
+
+The event knobs, log format, and realm import live in the Keycloak Helm
+values under [`deploy/helm/platform/`](../../deploy/helm/platform/).
 
 ## Resource ownership
 

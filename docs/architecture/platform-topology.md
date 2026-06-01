@@ -17,7 +17,7 @@ Last verified: 2026-05-22
 - [ADR-038 — Paired agent and gateway pods](../adrs/038-paired-gateway-pod.md) — agent and gateway run in two paired pods per agent
 - [ADR-041 — Istio ambient mesh](../adrs/041-istio-ambient-mesh.md) — SPIFFE identity for every internal hop; replaces the pair-key NetworkPolicy and the trusted `x-platform-instance` header
 - [ADR-046 — Eliminate Instance, collapse into Agent](../adrs/046-eliminate-instance.md) — a single Agent ConfigMap carries both definition and runtime state; the `agent-instance` type is gone
-- [ADR-047 — API keys with scopes for headless CLI use](../adrs/047-api-keys-headless-auth.md) — the public port's bearer middleware dispatches by token prefix; JWTs and API keys share one auth slot
+- [ADR-056 — API keys with scopes for headless CLI use](../adrs/056-api-keys-headless-auth.md) — the public port's bearer middleware dispatches by token prefix; JWTs and API keys share one auth slot
 
 ## Overview
 
@@ -61,7 +61,7 @@ A TypeScript server that hosts the user-facing surface and the ACP relay. It run
 - **Public port** — user-authenticated tRPC, REST (OAuth callbacks, health, version), and the ACP relay WebSocket. The `version` endpoint is unauthenticated and powers the CLI's compatibility-floor check ([cli.md](cli.md)).
 - **Harness port** — an internal-only endpoint consumed by agent pods for trigger handoff and MCP tool calls. Not exposed outside the cluster and carries no user authentication.
 
-The api-server proxies all ACP traffic to agent pods; clients never dial pods directly. It also wakes hibernated agents on demand before forwarding the first message of a session. Both the ACP relay and the tRPC proxy verify the caller — either a Keycloak JWT or an API key ([ADR-047](../adrs/047-api-keys-headless-auth.md)), dispatched by token prefix in the same `Authorization: Bearer` slot — and check ownership at the public port, then rewrite `Authorization` to the per-agent runtime token before forwarding. Agent-runtime never sees user identity directly. See [security-and-credentials](security-and-credentials.md) and [`packages/api-server/`](../../packages/api-server/).
+The api-server proxies all ACP traffic to agent pods; clients never dial pods directly. It also wakes hibernated agents on demand before forwarding the first message of a session. Both the ACP relay and the tRPC proxy verify the caller — either a Keycloak JWT or an API key ([ADR-056](../adrs/056-api-keys-headless-auth.md)), dispatched by token prefix in the same `Authorization: Bearer` slot — and check ownership at the public port, then rewrite `Authorization` to the per-agent runtime token before forwarding. Agent-runtime never sees user identity directly. See [security-and-credentials](security-and-credentials.md) and [`packages/api-server/`](../../packages/api-server/).
 
 The public port also accepts streamed bundled file imports per agent and proxies them to the target agent-runtime without buffering — ownership-checked and size-capped at the proxy boundary.
 
@@ -92,7 +92,7 @@ A React + Vite single-page app served by the api-server. It uses tRPC over HTTP 
 
 | Edge | Protocol | Purpose |
 |------|----------|---------|
-| ui → api-server (`<rel>-apiserver`) | tRPC over HTTP | CRUD on templates, agents, schedules, sessions |
+| ui → api-server (`<rel>-apiserver`) | tRPC over HTTP | Resource CRUD and single-file uploads |
 | ui → api-server | WebSocket (ACP, JSON-RPC 2.0) | Live chat session, permission prompts, streaming output; also carries `platform/sessionModeChanged` notifications for cross-client mode sync |
 | ui → api-server | WebSocket (binary terminal frames) | Live terminal session — input / output / resize / exit, see [ADR-037](../adrs/037-remote-terminal.md) |
 | cli → api-server | tRPC over HTTP | Session CRUD + `resolveTerminal`, agent resolution, auth (same tRPC surface the UI uses) |
@@ -100,7 +100,7 @@ A React + Vite single-page app served by the api-server. It uses tRPC over HTTP 
 | api-server → agent-runtime | WebSocket (ACP, JSON-RPC 2.0) | Chat-mode relay target — one hop, no fan-out |
 | api-server → agent-runtime | WebSocket (binary terminal frames) | Terminal-mode relay target — one hop, single client per session |
 | api-server → agent-runtime | HTTP (tRPC proxy) | In-pod file operations surfaced to the UI |
-| ui → api-server → agent-runtime | HTTP (multipart, streamed) | Bundled file import — single streamed roundtrip, no buffering on the relay; per-file merge into `<homeDir>/work` |
+| ui → api-server → agent-runtime, cli → api-server → agent-runtime | HTTP (multipart, streamed) | Bundled file import (UI bulk, CLI `dam import`) |
 | agent-runtime → api-server (`<rel>-apiserver-harness`, via paired gateway → Istio waypoint) | HTTP | MCP tool access, pod-files SSE, `/api/agents/:id/internal/trigger` (ADR-041) |
 | gateway → api-server (`<rel>-extauthz-<id>`) | gRPC | HITL ext_authz Check; per-agent Service pinned by AuthorizationPolicy to the gateway's SA principal (ADR-041) |
 | controller → K8s API | watch / list / write | Resource reconciliation and status writes |

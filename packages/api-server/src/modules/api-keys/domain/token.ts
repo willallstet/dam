@@ -18,7 +18,7 @@ export function mintApiKeyToken(): { token: string; hash: string } {
  * Server-side digest of an API key token. The token is 256 bits of
  * cryptographic randomness (32 random bytes, base64url-encoded), not a
  * user-chosen password — SHA-256 over a high-entropy random string is
- * brute-force-infeasible. See ADR-047 § Alternatives Considered for
+ * brute-force-infeasible. See ADR-056 § Alternatives Considered for
  * why argon2id / bcrypt / scrypt would solve a problem we do not have.
  */
 // lgtm[js/insufficient-password-hash]

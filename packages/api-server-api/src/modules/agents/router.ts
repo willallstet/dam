@@ -24,7 +24,7 @@ import type { Agent } from "./types.js";
  * against the principal's binding — the agent doesn't exist yet. A
  * key bound to a specific agent set must therefore not be able to
  * create new agents, otherwise it expands its own blast radius beyond
- * what the user intended at mint time. ADR-047.
+ * what the user intended at mint time. ADR-056.
  */
 function rejectIfRestricted(ctx: {
   user: { agentIds: readonly string[] | "*" };

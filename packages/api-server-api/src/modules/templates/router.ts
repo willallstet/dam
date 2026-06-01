@@ -16,7 +16,7 @@ function toView(tmpl: Template) {
 // Templates are operator-installed catalog data — read-only from clients.
 // Any agent-scoped principal can list them: an `agents:run` key needs the
 // catalog to display agent provenance; an `agents:manage` key needs it to
-// pick a template at create time. ADR-047.
+// pick a template at create time. ADR-056.
 export const templatesRouter = t.router({
   list: readAgentProcedure.query(async ({ ctx }) => {
     const templates = await ctx.templates.list();

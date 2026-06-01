@@ -9,7 +9,6 @@ import {
   secretCreateInputSchema,
   secretDeleteInputSchema,
   secretGetAgentAccessInputSchema,
-  secretListGrantedAgentsInputSchema,
   secretSetAgentAccessInputSchema,
   secretTestAnthropicInputSchema,
   secretUpdateGithubPatInputSchema,
@@ -49,7 +48,7 @@ export const secretsRouter = t.router({
     .mutation(({ ctx, input }) => ctx.secrets.delete(input.id)),
 
   // Per-agent grant linkage is configuration of the agent, not the credential —
-  // agents:manage. ADR-047.
+  // agents:manage. ADR-056.
   getAgentAccess: manageAgentsProcedure
     .input(secretGetAgentAccessInputSchema)
     .query(({ ctx, input }) => {
@@ -93,8 +92,4 @@ export const secretsRouter = t.router({
         secretIds: input.secretIds,
       });
     }),
-
-  listGrantedAgents: manageConnectionsProcedure
-    .input(secretListGrantedAgentsInputSchema)
-    .query(({ ctx, input }) => ctx.secrets.listGrantedAgents(input.id)),
 });

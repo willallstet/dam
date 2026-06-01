@@ -5,15 +5,49 @@ import {
   manageConnectionsProcedure,
 } from "../../auth-procedures.js";
 import {
+  connectionCreateInputSchema,
+  connectionDiscoverMcpInputSchema,
   connectionGetAgentConnectionsInputSchema,
+  connectionIdInputSchema,
   connectionSetAgentConnectionsInputSchema,
+  connectionStartOAuthInputSchema,
 } from "./schemas.js";
 
 export const connectionsRouter = t.router({
-  list: manageConnectionsProcedure.query(({ ctx }) => ctx.connections.list()),
+  listTemplates: manageConnectionsProcedure.query(({ ctx }) =>
+    ctx.connections.listTemplates(),
+  ),
+
+  list: manageConnectionsProcedure.query(({ ctx }) =>
+    ctx.connections.listConnections(),
+  ),
+
+  get: manageConnectionsProcedure
+    .input(connectionIdInputSchema)
+    .query(({ ctx, input }) => ctx.connections.getConnection(input.id)),
+
+  create: manageConnectionsProcedure
+    .input(connectionCreateInputSchema)
+    .mutation(({ ctx, input }) =>
+      ctx.connections.createFromTemplate(input).then((id) => ({ id })),
+    ),
+
+  startOAuth: manageConnectionsProcedure
+    .input(connectionStartOAuthInputSchema)
+    .mutation(({ ctx, input }) =>
+      ctx.connections.startOAuth(input.connectionId),
+    ),
+
+  discoverMcp: manageConnectionsProcedure
+    .input(connectionDiscoverMcpInputSchema)
+    .mutation(({ ctx, input }) => ctx.connections.discoverMcp(input)),
+
+  delete: manageConnectionsProcedure
+    .input(connectionIdInputSchema)
+    .mutation(({ ctx, input }) => ctx.connections.deleteConnection(input.id)),
 
   // Per-agent grant linkage lives under agents:manage (the agent is the
-  // resource being configured, not the connection itself). ADR-047.
+  // resource being configured, not the connection itself). ADR-056.
   getAgentConnections: manageAgentsProcedure
     .input(connectionGetAgentConnectionsInputSchema)
     .query(({ ctx, input }) => {

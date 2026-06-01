@@ -7,13 +7,15 @@
   "exports": {
     ".": "./src/index.ts",
     "./router": "./src/router.ts",
-    "./auth-procedures": "./src/auth-procedures.ts"
+    "./auth-procedures": "./src/auth-procedures.ts",
+    "./harness-router": "./src/harness-router.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@trpc/server": "^11.16.0",
+    "agent-runtime-api": "workspace:*",
     "zod": "^4.4.3"
   },
   "devDependencies": {

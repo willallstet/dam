@@ -1,4 +1,4 @@
-export { createDb, type Db } from "./client.js";
+export { createDb, type Db, type DbTx } from "./client.js";
 export { runMigrations } from "./migrate.js";
 export {
   channels,
@@ -12,15 +12,27 @@ export {
   egressRules,
   pendingApprovals,
   apiKeys,
+  connections,
+  connectionGrants,
+  agents,
+  runtimeStateOutbox,
+  runtimeEvents,
+  schedules,
+  activityEvents,
+  actorRoles,
+  termsAcceptances,
 } from "./schema.js";
 export {
   eq,
   and,
+  or,
+  gt,
   inArray,
   asc,
   desc,
   isNotNull,
   isNull,
   lt,
+  lte,
   sql,
 } from "drizzle-orm";
