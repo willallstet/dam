@@ -41,13 +41,14 @@ const configSchema = z.object({
   slackAppToken: z.string().nullable().default(null),
   slackOauthCallbackUrl: z.string().nullable().default(null),
   telegramEnabled: z.coerce.boolean().default(false),
+  e2eEnabled: z.coerce.boolean().default(false),
   activityTrackingEnabled: z.coerce.boolean().default(false),
   /** HMAC key used to pseudonymize Keycloak `sub` values written to
    *  `activity_events`, `actor_roles`, and `instances` (GDPR Art. 32).
    *  Must be stable across restarts — rotating it orphans every existing
    *  row. The Helm chart auto-generates and persists this in a Secret. */
   activityHmacKey: z.string().min(1, "ACTIVITY_HMAC_KEY must be set"),
-  /** HMAC pepper for at-rest API-key token digests (ADR-056). Must be stable
+  /** HMAC pepper for at-rest API-key token digests (ADR-057). Must be stable
    *  across restarts — rotating it invalidates every existing API key. The
    *  Helm chart auto-generates and persists this in a Secret. */
   apiKeyHmacKey: z.string().min(1, "API_KEY_HMAC_KEY must be set"),
@@ -147,6 +148,7 @@ export function loadConfig(): Config {
     slackAppToken: process.env.SLACK_APP_TOKEN,
     slackOauthCallbackUrl: process.env.SLACK_OAUTH_CALLBACK_URL,
     telegramEnabled: process.env.TELEGRAM_ENABLED,
+    e2eEnabled: process.env.E2E_ENABLED,
     activityTrackingEnabled: process.env.ACTIVITY_TRACKING_ENABLED,
     activityHmacKey: process.env.ACTIVITY_HMAC_KEY,
     apiKeyHmacKey: process.env.API_KEY_HMAC_KEY,

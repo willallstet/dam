@@ -52,7 +52,7 @@ export interface CreateApprovalsServiceDeps {
   wrapperFrameSender: WrapperFrameSender;
   isAgentOwnedBy(agentId: string, ownerSub: string): Promise<boolean>;
   ownerSub: string;
-  /** Per-key agent allowlist (ADR-056). `"*"` for browser-flow callers
+  /** Per-key agent allowlist (ADR-057). `"*"` for browser-flow callers
    *  and API keys with wildcard binding. Restricted keys see only their
    *  bound agents, and any mutation against a non-bound row throws
    *  FORBIDDEN — single-agent IDs are not opaque to callers, so silent

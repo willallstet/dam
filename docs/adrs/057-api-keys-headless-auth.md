@@ -1,4 +1,4 @@
-# ADR-056: API keys with scopes for headless CLI use
+# ADR-057: API keys with scopes for headless CLI use
 
 **Date:** 2026-05-22
 **Status:** Accepted

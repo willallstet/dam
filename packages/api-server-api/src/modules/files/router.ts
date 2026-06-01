@@ -26,7 +26,7 @@ export interface FilesService {
 export const filesRouter = t.router({
   // pod-files write (incl. `dam import`) operates an agent in its current
   // configuration — agents:run, scoped to the principal's agent binding.
-  // ADR-056 § Scope definitions.
+  // ADR-057 § Scope definitions.
   upload: runProcedure
     .input(uploadInputSchema)
     .output(uploadOutputSchema)

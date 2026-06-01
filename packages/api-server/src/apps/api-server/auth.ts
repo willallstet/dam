@@ -41,7 +41,7 @@ export interface AuthConfig {
 }
 
 export interface AuthDeps {
-  /** Validates a `pk_…` (platform key) token, see ADR-056. Optional —
+  /** Validates a `pk_…` (platform key) token, see ADR-057. Optional —
    *  when omitted, API-key tokens are rejected so deployments without
    *  the api-keys module wired in remain JWT-only. */
   verifyApiKey?: (
@@ -110,7 +110,7 @@ export function createAuth(config: AuthConfig, deps: AuthDeps = {}) {
     if (!result.ok) throw new UnauthorizedError(result.error);
 
     const key = result.value;
-    // Per-request owner-active check (ADR-056). When the owner has been
+    // Per-request owner-active check (ADR-057). When the owner has been
     // deleted in Keycloak, any of their keys lose authority immediately —
     // no revocation sweep is needed. Role demotion within Keycloak is a
     // weaker form of this check and is deferred to a follow-up.

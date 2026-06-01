@@ -4,7 +4,7 @@ import { apiKeyCreateInputSchema, apiKeyRevokeInputSchema } from "./schemas.js";
 
 // All three procedures gate at the router via `browserOnlyProcedure`, so
 // the service layer no longer has to enforce "keys can't manage keys".
-// ADR-056 § Decision: this is the single privilege-escalation barrier.
+// ADR-057 § Decision: this is the single privilege-escalation barrier.
 export const apiKeysRouter = t.router({
   list: browserOnlyProcedure.query(({ ctx }) => ctx.apiKeys.list()),
 

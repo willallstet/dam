@@ -22,7 +22,7 @@ import { createApiKeyTokenCodec } from "./domain/token.js";
  */
 export function composeApiKeysModule(deps: {
   db: Db;
-  /** Server-side HMAC pepper for at-rest token digests (ADR-056). Stable
+  /** Server-side HMAC pepper for at-rest token digests (ADR-057). Stable
    *  across restarts — rotating it invalidates every existing key. */
   hmacKey: string;
   isAgentOwnedBy: (agentId: string, ownerSub: string) => Promise<boolean>;

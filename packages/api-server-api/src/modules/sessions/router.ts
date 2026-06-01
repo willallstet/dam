@@ -47,7 +47,7 @@ export const sessionsRouter = t.router({
     .input(sessionListByScheduleIdInputSchema)
     .query(async ({ ctx, input }) => {
       // Resolve the schedule's agent before any data read so a restricted
-      // key cannot fan out across schedules outside its binding (ADR-056).
+      // key cannot fan out across schedules outside its binding (ADR-057).
       const sched = await ctx.schedules.get(input.scheduleId);
       if (!sched) return [];
       checkAgentBinding(ctx, sched.agentId);

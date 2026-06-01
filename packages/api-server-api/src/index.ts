@@ -335,7 +335,7 @@ export {
 export { authConfigSchema } from "./modules/auth/types.js";
 export type { AuthConfig } from "./modules/auth/types.js";
 
-// API keys (ADR-056)
+// API keys (ADR-057)
 export { ALL_SCOPES, API_KEY_PREFIX } from "./modules/api-keys/types.js";
 // auth-procedures.ts (runProcedure, manageAgentsProcedure, …, checkAgentBinding)
 // is deliberately NOT re-exported here. It calls `initTRPC.create()` at module
@@ -357,6 +357,13 @@ export {
   apiKeyRevokeInputSchema,
   scopeSchema,
 } from "./modules/api-keys/schemas.js";
+
+// E2E
+export type { E2eService } from "./modules/e2e/types.js";
+export {
+  e2eAgentIdInputSchema,
+  e2eSetScriptInputSchema,
+} from "./modules/e2e/schemas.js";
 
 export { secretRef } from "./modules/secret-store/types.js";
 export type { SecretRef } from "./modules/secret-store/types.js";

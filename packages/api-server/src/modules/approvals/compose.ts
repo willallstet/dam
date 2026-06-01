@@ -31,7 +31,7 @@ import type { RedisBus } from "../../core/redis-bus.js";
 export interface ComposeApprovalsServiceDeps {
   db: Db;
   ownerSub: string;
-  /** ADR-056 per-key agent binding. Forwarded into the service so
+  /** ADR-057 per-key agent binding. Forwarded into the service so
    *  `loadOwned` rejects mutations against approval rows whose agentId
    *  is outside the binding. */
   agentBinding: readonly string[] | "*";

@@ -9,7 +9,7 @@ Last verified: 2026-05-22
 - [#73 — Import local project context into agent workspace](https://github.com/dam-agents/dam/issues/73) — the `dam import` verb that uploads local files and folders into an Agent.
 - [#254 — Granular file ops over the agent-runtime proxy](https://github.com/dam-agents/dam/issues/254) — the `dam file` group (`get`, `put`, `list`) for single-file workspace operations.
 - [ADR-046 — Eliminate Instance, collapse into Agent](../adrs/046-eliminate-instance.md) — the CLI addresses Agents (not Instances); a single `dam agent` group covers the lifecycle.
-- [ADR-056 — API keys with scopes for headless CLI use](../adrs/056-api-keys-headless-auth.md) — the `dam auth token` sub-tree; `DAM_TOKEN` now accepts API keys (`pk_…` prefix) in the same Bearer slot the JWT flow already uses.
+- [ADR-057 — API keys with scopes for headless CLI use](../adrs/057-api-keys-headless-auth.md) — the `dam auth token` sub-tree; `DAM_TOKEN` now accepts API keys (`pk_…` prefix) in the same Bearer slot the JWT flow already uses.
 
 ## Overview
 
@@ -62,13 +62,13 @@ The `auth` module exposes a single application service — **`TokenProvider`** �
 
 Concurrent writes to the auth store are not coordinated in v1. The store mutates `auth.toml` via read-merge-rename: the rename is atomic, but the surrounding sequence is not, so two `dam` processes that overlap (e.g. an interactive `dam auth login --server foo` running while a `TokenProvider` refresh for `bar` fires in another terminal) can each persist their own merged snapshot, and the later rename silently reverts the other host's entry. The failure surfaces later as an unexpected `session-expired` prompt — recoverable with `dam auth login`, but on a host the user may not remember touching. Same-host concurrent refreshes cost at most one forced re-login. A proper fix (per-host files or cross-process locking) is deferred — v1 targets solo, single-terminal use.
 
-For headless / CI use, set `DAM_TOKEN=<bearer>` — the CLI uses it verbatim and bypasses `auth.toml`. There is no `--token` flag (avoids leaking tokens into shell history and `ps`). The variable accepts either a Keycloak access token or a Platform API key (`pk_…` prefix, [ADR-056](../adrs/056-api-keys-headless-auth.md)); the CLI does not branch — the server's bearer middleware dispatches by prefix.
+For headless / CI use, set `DAM_TOKEN=<bearer>` — the CLI uses it verbatim and bypasses `auth.toml`. There is no `--token` flag (avoids leaking tokens into shell history and `ps`). The variable accepts either a Keycloak access token or a Platform API key (`pk_…` prefix, [ADR-057](../adrs/057-api-keys-headless-auth.md)); the CLI does not branch — the server's bearer middleware dispatches by prefix.
 
 ### API keys (`dam auth token`)
 
 `dam auth token` is the sub-tree that mints, lists, and revokes API keys. Three commands:
 
-- **`dam auth token create --name <name> [--scope agents:run|agents:manage|connections:manage…] [--agent <agent-id>…] [--expires <iso>] [--json]`** — calls `apiKeys.create` against the active host. The server returns the plaintext token *once*; the CLI prints it on stdout (so a pipeline can capture it) and warns on stderr that it cannot be recovered. Default scope is `agents:run`; default agent binding is `*` (every agent the owner owns now and in future). The mutation requires an interactive Keycloak session — API key principals cannot mint other API keys ([ADR-056](../adrs/056-api-keys-headless-auth.md)).
+- **`dam auth token create --name <name> [--scope agents:run|agents:manage|connections:manage…] [--agent <agent-id>…] [--expires <iso>] [--json]`** — calls `apiKeys.create` against the active host. The server returns the plaintext token *once*; the CLI prints it on stdout (so a pipeline can capture it) and warns on stderr that it cannot be recovered. Default scope is `agents:run`; default agent binding is `*` (every agent the owner owns now and in future). The mutation requires an interactive Keycloak session — API key principals cannot mint other API keys ([ADR-057](../adrs/057-api-keys-headless-auth.md)).
 - **`dam auth token list [--json]`** — emits id, name, scopes, agent binding, expiry, and last-used timestamp for every non-revoked key the caller owns. Plaintext is never displayed.
 - **`dam auth token revoke <id>`** — soft-deletes by stamping `revoked_at`. The key is rejected on the very next request — the validator filters revoked rows at lookup time.
 

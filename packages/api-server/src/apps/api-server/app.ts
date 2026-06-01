@@ -8,6 +8,7 @@ import type {
   ApiContext,
   AuthConfig,
   Brand,
+  E2eService,
   Scope,
   TermsService,
   UserIdentity,
@@ -114,6 +115,7 @@ export interface ApiServerAppDeps {
   ) => void;
   terms: TermsService;
   isTermsAccepted: IsAcceptedPort;
+  e2e: E2eService;
 }
 
 export function startApiServerApp(deps: ApiServerAppDeps) {
@@ -138,6 +140,7 @@ export function startApiServerApp(deps: ApiServerAppDeps) {
     schedulesBoot,
     terms,
     isTermsAccepted,
+    e2e,
   } = deps;
 
   const k8sClient = createK8sClient(api, config.namespace);
@@ -190,7 +193,7 @@ export function startApiServerApp(deps: ApiServerAppDeps) {
       agentsRepo.isOwnedBy(agentId, ownerSub),
   });
 
-  // Positive cache for the per-request owner-active probe (ADR-056). The
+  // Positive cache for the per-request owner-active probe (ADR-057). The
   // probe hits Keycloak's admin API; a CI burst against API keys would
   // otherwise pressure Keycloak and add per-call latency. We cache only
   // the *positive* result for 60s — a deleted/disabled owner remains
@@ -368,13 +371,13 @@ export function startApiServerApp(deps: ApiServerAppDeps) {
     return agentsRepo.isOwnedBy(agentId, owner);
   }
 
-  /** ADR-056 binding check for non-tRPC surfaces (in-pod relay, WS upgrade,
+  /** ADR-057 binding check for non-tRPC surfaces (in-pod relay, WS upgrade,
    *  import proxy). Returns true when the principal may operate `agentId`. */
   function hasAgentBinding(user: UserIdentity, agentId: string): boolean {
     return user.agentIds === "*" || user.agentIds.includes(agentId);
   }
 
-  /** ADR-056 scope guard for non-tRPC surfaces. tRPC routers use the
+  /** ADR-057 scope guard for non-tRPC surfaces. tRPC routers use the
    *  procedure builders in api-server-api/auth-procedures.ts. */
   function hasScope(user: UserIdentity, scope: Scope): boolean {
     return user.scopes.includes(scope);
@@ -386,7 +389,7 @@ export function startApiServerApp(deps: ApiServerAppDeps) {
     if (!(await verifyOwner(agentId, user.sub))) {
       return c.json({ error: "not found" }, 404);
     }
-    // ADR-056: in-pod relay is the most powerful surface in the system
+    // ADR-057: in-pod relay is the most powerful surface in the system
     // (ACP frames, pod-files, terminal). Require `agents:run` + per-key
     // agent binding before forwarding to the agent-runtime.
     if (!hasScope(user, "agents:run")) {
@@ -475,7 +478,7 @@ export function startApiServerApp(deps: ApiServerAppDeps) {
     if (!(await verifyOwner(agentId, user.sub))) {
       return c.json({ error: "not found" }, 404);
     }
-    // ADR-056 § Scope definitions: pod-files (incl. `dam import`) is
+    // ADR-057 § Scope definitions: pod-files (incl. `dam import`) is
     // `agents:run` — the agent itself can write the same paths during a
     // run, so import is not a new capability for an agents:run principal.
     if (!hasScope(user, "agents:run")) {
@@ -669,6 +672,7 @@ export function startApiServerApp(deps: ApiServerAppDeps) {
       readTemplateSpec,
       presetSeeder,
       cleanupHooks: agentCleanupHooks,
+      runtimeMutator,
     });
     const { schedules, isOwnedSchedule } = composeSchedulesForOwner({
       boot: schedulesBoot,
@@ -757,7 +761,9 @@ export function startApiServerApp(deps: ApiServerAppDeps) {
         apiKeys,
         files,
         terms,
+        e2e,
         user,
+        e2eEnabled: config.e2eEnabled,
       }),
     });
   });
@@ -851,7 +857,7 @@ export function startApiServerApp(deps: ApiServerAppDeps) {
       socket.destroy();
       return;
     }
-    // ADR-056: ACP and terminal WebSocket attachment is `agents:run`
+    // ADR-057: ACP and terminal WebSocket attachment is `agents:run`
     // plus per-key agent binding. Without these checks, an exfiltrated
     // key bound to one agent could speak ACP to any owned agent.
     if (!hasScope(user, "agents:run") || !hasAgentBinding(user, agentId)) {

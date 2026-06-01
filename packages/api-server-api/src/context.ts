@@ -3,6 +3,7 @@ import type { ApiKeysService, Scope } from "./modules/api-keys/types.js";
 import type { ApprovalsService } from "./modules/approvals/types.js";
 import type { ChannelsService } from "./modules/channels/types.js";
 import type { ConnectionsService } from "./modules/connections/types.js";
+import type { E2eService } from "./modules/e2e/types.js";
 import type { EgressRulesService } from "./modules/egress-rules/types.js";
 import type { FilesService } from "./modules/files/router.js";
 import type { SchedulesService } from "./modules/schedules/types.js";
@@ -18,7 +19,7 @@ export interface UserIdentity {
   /** Effective scopes granted to this principal for the current request.
    *  Keycloak-authenticated users carry all scopes; API-key principals
    *  carry the scopes recorded on the key intersected with the owner's
-   *  current effective permissions (ADR-056). */
+   *  current effective permissions (ADR-057). */
   scopes: readonly Scope[];
   /** Agent allowlist. `"*"` means every agent owned by `sub`. */
   agentIds: readonly string[] | "*";
@@ -41,5 +42,7 @@ export interface ApiContext {
   apiKeys: ApiKeysService;
   files: FilesService;
   terms: TermsService;
+  e2e: E2eService;
   user: UserIdentity;
+  e2eEnabled: boolean;
 }
