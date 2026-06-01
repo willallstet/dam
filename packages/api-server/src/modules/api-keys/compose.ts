@@ -12,6 +12,7 @@ import {
   type ApiKeyValidator,
 } from "./services/api-key-validator.js";
 import { createApiKeysService } from "./services/api-keys-service.js";
+import { createApiKeyTokenCodec } from "./domain/token.js";
 
 /**
  * System-level wiring — the validator is shared across all requests
@@ -21,17 +22,22 @@ import { createApiKeysService } from "./services/api-keys-service.js";
  */
 export function composeApiKeysModule(deps: {
   db: Db;
+  /** Server-side HMAC pepper for at-rest token digests (ADR-056). Stable
+   *  across restarts — rotating it invalidates every existing key. */
+  hmacKey: string;
   isAgentOwnedBy: (agentId: string, ownerSub: string) => Promise<boolean>;
 }): {
   validator: ApiKeyValidator;
   createService: (perRequest: { ownerSub: string }) => ApiKeysService;
 } {
-  const { db, isAgentOwnedBy } = deps;
+  const { db, hmacKey, isAgentOwnedBy } = deps;
+  const codec = createApiKeyTokenCodec(hmacKey);
   const list = listApiKeysByOwner(db);
   const insert = insertApiKey(db);
   const revoke = revokeApiKey(db);
 
   const validator = createApiKeyValidator({
+    hashToken: codec.hash,
     findByHash: findActiveApiKeyByHash(db),
     touchLastUsed: touchApiKeyLastUsed(db),
   });
@@ -44,6 +50,7 @@ export function composeApiKeysModule(deps: {
         list,
         insert,
         revoke,
+        mintToken: codec.mint,
         isAgentOwnedBy,
       }),
   };

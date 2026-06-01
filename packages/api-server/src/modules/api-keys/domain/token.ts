@@ -1,29 +1,51 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHmac, randomBytes } from "node:crypto";
 import { API_KEY_PREFIX } from "api-server-api";
 
 const RANDOM_BYTES = 32;
 
-export function mintApiKeyToken(): { token: string; hash: string } {
-  // base64url chosen over base32: stdlib-supported (no hand-rolled encoder
-  // and its trailing-bits edge case), shorter (43 chars vs 52 for 32B of
-  // entropy), and is the standard high-entropy bearer-token shape used by
-  // most provider APIs. Case-sensitivity is fine here — modern shells,
-  // clipboards, and screenshot OCR all preserve case for bearer tokens.
-  const token =
-    API_KEY_PREFIX + randomBytes(RANDOM_BYTES).toString("base64url");
-  return { token, hash: hashApiKeyToken(token) };
+export interface ApiKeyTokenCodec {
+  /** Generate a fresh token + its at-rest digest. */
+  mint(): { token: string; hash: string };
+  /** Recompute the at-rest digest for an incoming token (validation path). */
+  hash(token: string): string;
 }
 
 /**
- * Server-side digest of an API key token. The token is 256 bits of
- * cryptographic randomness (32 random bytes, base64url-encoded), not a
- * user-chosen password — SHA-256 over a high-entropy random string is
- * brute-force-infeasible. See ADR-056 § Alternatives Considered for
- * why argon2id / bcrypt / scrypt would solve a problem we do not have.
+ * Token codec bound to a server-side HMAC key (a "pepper"). The token itself
+ * is 256 bits of cryptographic randomness, so brute-forcing the digest is
+ * already infeasible; the pepper adds defense-in-depth — a Postgres-only leak
+ * (without the app secret) yields digests an attacker cannot even verify a
+ * guessed token against. HMAC-SHA256 keeps per-request validation cheap, which
+ * a slow KDF (argon2id/bcrypt/scrypt) would not — and a KDF buys nothing for a
+ * high-entropy random secret. See ADR-056 § Alternatives Considered.
+ *
+ * The key must be stable across restarts — rotating it invalidates every
+ * existing key (digests stop matching). The Helm chart generates and persists
+ * it in a Secret, mirroring `ACTIVITY_HMAC_KEY`.
  */
-// lgtm[js/insufficient-password-hash]
-export function hashApiKeyToken(token: string): string {
-  return createHash("sha256").update(token).digest("hex");
+export function createApiKeyTokenCodec(hmacKey: string): ApiKeyTokenCodec {
+  if (!hmacKey) {
+    throw new Error(
+      "api-keys: API_KEY_HMAC_KEY must be set — refusing to hash tokens without a server-side pepper",
+    );
+  }
+
+  function hash(token: string): string {
+    return createHmac("sha256", hmacKey).update(token).digest("hex");
+  }
+
+  function mint(): { token: string; hash: string } {
+    // base64url chosen over base32: stdlib-supported (no hand-rolled encoder
+    // and its trailing-bits edge case), shorter (43 chars vs 52 for 32B of
+    // entropy), and is the standard high-entropy bearer-token shape used by
+    // most provider APIs. Case-sensitivity is fine here — modern shells,
+    // clipboards, and screenshot OCR all preserve case for bearer tokens.
+    const token =
+      API_KEY_PREFIX + randomBytes(RANDOM_BYTES).toString("base64url");
+    return { token, hash: hash(token) };
+  }
+
+  return { mint, hash };
 }
 
 export function isApiKeyToken(token: string): boolean {

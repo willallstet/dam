@@ -1,7 +1,6 @@
 import type { Scope } from "api-server-api";
 import { err, ok, type Result } from "../../../core/result.js";
 import type { ApiKeyRow } from "../domain/types.js";
-import { hashApiKeyToken } from "../domain/token.js";
 
 export interface ValidatedApiKey {
   id: string;
@@ -13,6 +12,9 @@ export interface ValidatedApiKey {
 export type ApiKeyValidationFailure = "unknown" | "expired" | "revoked";
 
 export interface ApiKeyValidatorDeps {
+  /** Computes the at-rest digest of an incoming token (HMAC-SHA256 with the
+   *  server pepper). Injected so the validator stays free of key material. */
+  hashToken: (token: string) => string;
   findByHash: (hash: string) => Promise<ApiKeyRow | null>;
   touchLastUsed: (id: string) => Promise<void>;
 }
@@ -25,7 +27,7 @@ export function createApiKeyValidator(
   deps: ApiKeyValidatorDeps,
 ): ApiKeyValidator {
   return async (token) => {
-    const hash = hashApiKeyToken(token);
+    const hash = deps.hashToken(token);
     const row = await deps.findByHash(hash);
     if (!row) return err("unknown");
     if (row.revokedAt) return err("revoked");

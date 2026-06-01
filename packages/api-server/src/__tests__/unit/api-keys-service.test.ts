@@ -2,7 +2,10 @@ import { describe, it, expect } from "vitest";
 import { TRPCError } from "@trpc/server";
 import type { Scope } from "api-server-api";
 import { createApiKeysService } from "../../modules/api-keys/services/api-keys-service.js";
+import { createApiKeyTokenCodec } from "../../modules/api-keys/domain/token.js";
 import type { ApiKeyRow } from "../../modules/api-keys/domain/types.js";
+
+const testCodec = createApiKeyTokenCodec("test-pepper");
 
 interface InsertArgs {
   id: string;
@@ -64,6 +67,7 @@ function createService(
     list: repo.list,
     insert: repo.insert,
     revoke: repo.revoke,
+    mintToken: testCodec.mint,
     isAgentOwnedBy: opts.isAgentOwnedBy ?? (async () => true),
   });
   return { svc, repo };

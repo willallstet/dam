@@ -1,14 +1,16 @@
 import { describe, it, expect, vi } from "vitest";
 import { createApiKeyValidator } from "../../modules/api-keys/services/api-key-validator.js";
-import { hashApiKeyToken } from "../../modules/api-keys/domain/token.js";
+import { createApiKeyTokenCodec } from "../../modules/api-keys/domain/token.js";
 import type { ApiKeyRow } from "../../modules/api-keys/domain/types.js";
+
+const codec = createApiKeyTokenCodec("test-pepper");
 
 function row(overrides: Partial<ApiKeyRow> = {}): ApiKeyRow {
   return {
     id: "key-deadbeef",
     ownerSub: "owner-1",
     name: "ci",
-    hash: hashApiKeyToken("pk_xxx"),
+    hash: codec.hash("pk_xxx"),
     scopes: ["agents:run"],
     agentIds: null,
     expiresAt: null,
@@ -22,6 +24,7 @@ function row(overrides: Partial<ApiKeyRow> = {}): ApiKeyRow {
 describe("createApiKeyValidator", () => {
   it("returns ok with wildcard binding when agent_ids is null", async () => {
     const validate = createApiKeyValidator({
+      hashToken: codec.hash,
       findByHash: async () => row(),
       touchLastUsed: async () => {},
     });
@@ -36,6 +39,7 @@ describe("createApiKeyValidator", () => {
 
   it("rejects unknown tokens", async () => {
     const validate = createApiKeyValidator({
+      hashToken: codec.hash,
       findByHash: async () => null,
       touchLastUsed: async () => {},
     });
@@ -45,6 +49,7 @@ describe("createApiKeyValidator", () => {
 
   it("rejects revoked keys", async () => {
     const validate = createApiKeyValidator({
+      hashToken: codec.hash,
       findByHash: async () => row({ revokedAt: new Date() }),
       touchLastUsed: async () => {},
     });
@@ -55,6 +60,7 @@ describe("createApiKeyValidator", () => {
   it("rejects expired keys", async () => {
     const yesterday = new Date(Date.now() - 86_400_000);
     const validate = createApiKeyValidator({
+      hashToken: codec.hash,
       findByHash: async () => row({ expiresAt: yesterday }),
       touchLastUsed: async () => {},
     });
@@ -64,6 +70,7 @@ describe("createApiKeyValidator", () => {
 
   it("preserves the agent allowlist when not null", async () => {
     const validate = createApiKeyValidator({
+      hashToken: codec.hash,
       findByHash: async () => row({ agentIds: ["agent-1", "agent-2"] }),
       touchLastUsed: async () => {},
     });
@@ -75,6 +82,7 @@ describe("createApiKeyValidator", () => {
   it("touches last_used_at on success (fire-and-forget)", async () => {
     const touch = vi.fn().mockResolvedValue(undefined);
     const validate = createApiKeyValidator({
+      hashToken: codec.hash,
       findByHash: async () => row(),
       touchLastUsed: touch,
     });
@@ -86,6 +94,7 @@ describe("createApiKeyValidator", () => {
 
   it("does NOT fail the request when touchLastUsed throws", async () => {
     const validate = createApiKeyValidator({
+      hashToken: codec.hash,
       findByHash: async () => row(),
       touchLastUsed: async () => {
         throw new Error("db down");

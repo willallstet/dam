@@ -8,7 +8,6 @@ import type {
   Scope,
 } from "api-server-api";
 import type { ApiKeyRow } from "../domain/types.js";
-import { mintApiKeyToken } from "../domain/token.js";
 
 /** Active-keys cap per owner. Hard upper bound to keep the table bounded
  *  even under a misbehaving / scripted caller; well above any reasonable
@@ -28,6 +27,9 @@ export interface ApiKeysServiceDeps {
     expiresAt: Date | null;
   }) => Promise<ApiKeyRow>;
   revoke: (id: string, ownerSub: string) => Promise<boolean>;
+  /** Mints a fresh token + its at-rest digest (HMAC-SHA256 with the server
+   *  pepper). Injected so the service stays free of key material. */
+  mintToken: () => { token: string; hash: string };
   /** Verifies each agent ID exists and is owned by the caller — keys
    *  binding to non-existent agents are a silent footgun. */
   isAgentOwnedBy: (agentId: string, ownerSub: string) => Promise<boolean>;
@@ -99,7 +101,7 @@ export function createApiKeysService(deps: ApiKeysServiceDeps): ApiKeysService {
         });
       }
 
-      const { token, hash } = mintApiKeyToken();
+      const { token, hash } = deps.mintToken();
       const row = await deps.insert({
         id: generateKeyId(),
         ownerSub: deps.ownerSub,

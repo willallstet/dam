@@ -185,6 +185,7 @@ export function startApiServerApp(deps: ApiServerAppDeps) {
 
   const apiKeysModule = composeApiKeysModule({
     db,
+    hmacKey: config.apiKeyHmacKey,
     isAgentOwnedBy: (agentId, ownerSub) =>
       agentsRepo.isOwnedBy(agentId, ownerSub),
   });
