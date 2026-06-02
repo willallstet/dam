@@ -22,7 +22,7 @@ export async function waitForAgentRunning(
   await expect
     .poll(
       async () => {
-        const agent = await api.agents.get.query({ id: agentId });
+        const agent = await api.agents.get.query({ agentId });
         return agent.state;
       },
       {
