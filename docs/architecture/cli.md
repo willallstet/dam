@@ -1,6 +1,6 @@
 # CLI
 
-Last verified: 2026-05-22
+Last verified: 2026-06-01
 
 ## Motivated by
 
@@ -9,7 +9,7 @@ Last verified: 2026-05-22
 - [#73 — Import local project context into agent workspace](https://github.com/dam-agents/dam/issues/73) — the `dam import` verb that uploads local files and folders into an Agent.
 - [#254 — Granular file ops over the agent-runtime proxy](https://github.com/dam-agents/dam/issues/254) — the `dam file` group (`get`, `put`, `list`) for single-file workspace operations.
 - [ADR-046 — Eliminate Instance, collapse into Agent](../adrs/046-eliminate-instance.md) — the CLI addresses Agents (not Instances); a single `dam agent` group covers the lifecycle.
-- [ADR-057 — API keys with scopes for headless CLI use](../adrs/057-api-keys-headless-auth.md) — the `dam auth token` sub-tree; `DAM_TOKEN` now accepts API keys (`pk_…` prefix) in the same Bearer slot the JWT flow already uses.
+- [ADR-057 — API keys with scopes for headless CLI use](../adrs/058-api-keys-headless-auth.md) — the `dam auth token` sub-tree; `DAM_TOKEN` now accepts API keys (`pk_…` prefix) in the same Bearer slot the JWT flow already uses.
 
 ## Overview
 
@@ -62,13 +62,13 @@ The `auth` module exposes a single application service — **`TokenProvider`** �
 
 Concurrent writes to the auth store are not coordinated in v1. The store mutates `auth.toml` via read-merge-rename: the rename is atomic, but the surrounding sequence is not, so two `dam` processes that overlap (e.g. an interactive `dam auth login --server foo` running while a `TokenProvider` refresh for `bar` fires in another terminal) can each persist their own merged snapshot, and the later rename silently reverts the other host's entry. The failure surfaces later as an unexpected `session-expired` prompt — recoverable with `dam auth login`, but on a host the user may not remember touching. Same-host concurrent refreshes cost at most one forced re-login. A proper fix (per-host files or cross-process locking) is deferred — v1 targets solo, single-terminal use.
 
-For headless / CI use, set `DAM_TOKEN=<bearer>` — the CLI uses it verbatim and bypasses `auth.toml`. There is no `--token` flag (avoids leaking tokens into shell history and `ps`). The variable accepts either a Keycloak access token or a Platform API key (`pk_…` prefix, [ADR-057](../adrs/057-api-keys-headless-auth.md)); the CLI does not branch — the server's bearer middleware dispatches by prefix.
+For headless / CI use, set `DAM_TOKEN=<bearer>` — the CLI uses it verbatim and bypasses `auth.toml`. There is no `--token` flag (avoids leaking tokens into shell history and `ps`). The variable accepts either a Keycloak access token or a Platform API key (`pk_…` prefix, [ADR-057](../adrs/058-api-keys-headless-auth.md)); the CLI does not branch — the server's bearer middleware dispatches by prefix.
 
 ### API keys (`dam auth token`)
 
 `dam auth token` is the sub-tree that mints, lists, and revokes API keys. Three commands:
 
-- **`dam auth token create --name <name> [--scope agents:run|agents:manage|connections:manage…] [--agent <agent-id>…] [--expires <iso>] [--json]`** — calls `apiKeys.create` against the active host. The server returns the plaintext token *once*; the CLI prints it on stdout (so a pipeline can capture it) and warns on stderr that it cannot be recovered. Default scope is `agents:run`; default agent binding is `*` (every agent the owner owns now and in future). The mutation requires an interactive Keycloak session — API key principals cannot mint other API keys ([ADR-057](../adrs/057-api-keys-headless-auth.md)).
+- **`dam auth token create --name <name> [--scope agents:run|agents:manage|connections:manage…] [--agent <agent-id>…] [--expires <iso>] [--json]`** — calls `apiKeys.create` against the active host. The server returns the plaintext token *once*; the CLI prints it on stdout (so a pipeline can capture it) and warns on stderr that it cannot be recovered. Default scope is `agents:run`; default agent binding is `*` (every agent the owner owns now and in future). The mutation requires an interactive Keycloak session — API key principals cannot mint other API keys ([ADR-057](../adrs/058-api-keys-headless-auth.md)).
 - **`dam auth token list [--json]`** — emits id, name, scopes, agent binding, expiry, and last-used timestamp for every non-revoked key the caller owns. Plaintext is never displayed.
 - **`dam auth token revoke <id>`** — soft-deletes by stamping `revoked_at`. The key is rejected on the very next request — the validator filters revoked rows at lookup time.
 
@@ -118,11 +118,11 @@ The post-success hint points at `dam chat <name>`. Interrupting at any prompt be
 
 Three session strategies:
 
-- **New** (default) — creates a new terminal-mode session via the sessions API, then connects.
+- **New** (default) — mints a fresh session id locally and connects; the PTY creates the session on attach. It surfaces in `session/list` with no `_meta` and decodes as terminal.
 - **Continue** (`--continue`) — finds the most recent terminal-mode session for the agent. Errors if zero or more than one terminal session exists.
 - **Resume** (`--resume <session-id>`) — targets a specific session by ID. If the target session is in chat mode, the CLI prompts the user to confirm a mode switch to terminal before proceeding; declining exits cleanly.
 
-Strategy resolution happens server-side: the CLI calls a single `sessions.resolveTerminal` tRPC mutation with the strategy and receives back either a ready result (session ID + relative WebSocket path) or a decision prompt (`confirm-mode-switch`, `no-terminal-session`, etc.). This keeps the CLI a thin orchestrator — it never lists sessions to decide which one to connect to, and the URL construction for the terminal relay lives entirely in the api-server.
+Strategy resolution happens **client-side** ([ADR-055](../adrs/055-agent-owned-session-metadata.md)): sessions are agent-owned, so the CLI lists them over its own ACP connection to the api-server relay (decoding `_meta.platform`) and resolves the strategy locally — minting an id for `new`, matching terminal-mode sessions for `continue`, looking up the id for `resume` — then builds the terminal-relay URL itself. A confirmed chat→terminal switch is persisted over ACP (`session/resume` carrying `_meta.platform.mode`). There is no server-side session endpoint.
 
 The `--reset` flag can combine with any strategy — it tells the api-server's terminal relay to kill the existing PTY and spawn a fresh one, which also triggers `resetSession` on the agent-runtime to close the agent-side ACP session and clear its log.
 
@@ -130,7 +130,7 @@ On disconnect, the CLI prints the session ID and a ready-to-paste `dam chat --re
 
 `dam session list <agent>` lists all sessions for an agent, showing session ID, mode, type, and creation time. The `--json` flag emits raw JSON for scripted consumption.
 
-The chat module uses the same tRPC client infrastructure as the rest of the CLI (`@trpc/client` with `httpBatchLink` and bearer auth), composing a per-host `SessionsPort` for session CRUD and terminal resolution. The terminal bridge owns the raw TTY ↔ WebSocket lifecycle — it receives a server-provided `terminalPath` and constructs the full WebSocket URL locally, sending the auth token via an `Authorization: Bearer` header. Both are injected through the module's compose root alongside the shared Token Provider and Agent Resolver seams.
+The chat module composes a per-host `SessionsPort` backed by a small ACP client (`@agentclientprotocol/sdk` over the relay WebSocket) that lists sessions and persists mode changes; agent resolution and auth still use the shared tRPC client. The terminal bridge owns the raw TTY ↔ WebSocket lifecycle — it receives the `terminalPath` the port built and constructs the full WebSocket URL locally, sending the auth token as a `token` query parameter. Both are injected through the module's compose root alongside the shared Token Provider and Agent Resolver seams.
 
 ## Import
 

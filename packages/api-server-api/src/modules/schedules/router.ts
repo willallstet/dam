@@ -11,6 +11,7 @@ import {
   scheduleDeleteInputSchema,
   scheduleGetInputSchema,
   scheduleListInputSchema,
+  scheduleResetSessionInputSchema,
   scheduleToggleInputSchema,
   scheduleUpdateRRuleInputSchema,
 } from "./schemas.js";
@@ -105,4 +106,8 @@ export const schedulesRouter = t.router({
       checkAgentBinding(ctx, sched.agentId);
       return toView(sched);
     }),
+
+  resetSession: t.procedure
+    .input(scheduleResetSessionInputSchema)
+    .mutation(({ ctx, input }) => ctx.schedules.resetSession(input.id)),
 });

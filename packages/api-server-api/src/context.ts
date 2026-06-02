@@ -8,7 +8,6 @@ import type { EgressRulesService } from "./modules/egress-rules/types.js";
 import type { FilesService } from "./modules/files/router.js";
 import type { SchedulesService } from "./modules/schedules/types.js";
 import type { SecretsService } from "./modules/secrets/types.js";
-import type { SessionsService } from "./modules/sessions/types.js";
 import type { SkillsService } from "./modules/skills/types.js";
 import type { TemplatesService } from "./modules/templates/types.js";
 import type { TermsService } from "./modules/terms/types.js";
@@ -19,7 +18,7 @@ export interface UserIdentity {
   /** Effective scopes granted to this principal for the current request.
    *  Keycloak-authenticated users carry all scopes; API-key principals
    *  carry the scopes recorded on the key intersected with the owner's
-   *  current effective permissions (ADR-057). */
+   *  current effective permissions (ADR-058). */
   scopes: readonly Scope[];
   /** Agent allowlist. `"*"` means every agent owned by `sub`. */
   agentIds: readonly string[] | "*";
@@ -32,7 +31,6 @@ export interface ApiContext {
   templates: TemplatesService;
   agents: AgentsService;
   schedules: SchedulesService;
-  sessions: SessionsService;
   secrets: SecretsService;
   channels: ChannelsService;
   connections: ConnectionsService;

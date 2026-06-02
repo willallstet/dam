@@ -16,12 +16,6 @@ import {
   findBySlackChannelId,
   findSlackChannelByAgent,
 } from "./modules/agents/index.js";
-import { SessionMode, SessionType } from "api-server-api";
-import {
-  upsertSession,
-  findByInstanceAndThreadTs,
-  touchSession,
-} from "./modules/sessions/index.js";
 import {
   createAgentSkillsRepository,
   parseSeedSources,
@@ -69,10 +63,12 @@ import {
   startOnChannelTurnRelayedSaga,
 } from "./modules/forks/index.js";
 import { composeUsageModule } from "./modules/usage/compose.js";
+import { composeAuditModule } from "./modules/audit/index.js";
 import { createK8sForkOrchestrator } from "./modules/forks/infrastructure/k8s-fork-orchestrator.js";
 import { composeE2eModule } from "./modules/e2e/compose.js";
 import { composeTermsModule } from "./modules/terms/index.js";
 import { loadConfig } from "./config.js";
+import { configureLogger } from "./core/logger.js";
 import { startApiServerApp } from "./apps/api-server/app.js";
 import { startHarnessApiServerApp } from "./apps/harness-api-server/app.js";
 import { startExtAuthzGrpcApp } from "./apps/ext-authz/grpc.js";
@@ -96,6 +92,7 @@ import { createSubPseudonymizer } from "./core/sub-pseudonymizer.js";
 import { podBaseUrl } from "./modules/agents/infrastructure/k8s.js";
 
 const config = loadConfig();
+configureLogger({ level: config.logLevel });
 
 const { api } = createApi(config.namespace);
 await runMigrations(config.databaseUrl, config.migrationsPath);
@@ -153,6 +150,12 @@ const usage = composeUsageModule({
 });
 usage.start();
 
+// Security audit trail (bus-driven half). Denials and call-site-only
+// mutations log directly at their sites; this covers the actor-bearing
+// success/observation events on the domain bus.
+const audit = composeAuditModule();
+audit.start();
+
 const userDirectory = createKeycloakUserDirectory({
   keycloakUrl: config.keycloakUrl,
   keycloakRealm: config.keycloakRealm,
@@ -193,34 +196,9 @@ const { agents: systemAgents } = composeAgentsModule({
   readTemplateSpec: async () => null,
   runtimeMutator: runtimeDelivery.runtimeMutator,
 });
-const persistSession = upsertSession(db);
-const persistSlackSession = (
-  sessionId: string,
-  agentId: string,
-  type: SessionType,
-  threadTs?: string,
-) =>
-  persistSession(
-    sessionId,
-    agentId,
-    SessionMode.Chat,
-    type,
-    undefined,
-    threadTs,
-  );
-const persistTelegramSession = (
-  sessionId: string,
-  agentId: string,
-  type: SessionType,
-  threadId?: string,
-) =>
-  persistSession(
-    sessionId,
-    agentId,
-    SessionMode.Chat,
-    type,
-    undefined,
-    threadId,
+if (!config.redisUrl)
+  throw new Error(
+    "REDIS_URL is required (Redis is a platform primitive — see ADR-036)",
   );
 
 const identityLinkService = createIdentityLinkService({
@@ -254,7 +232,6 @@ const slackWorker =
         config.slackBotToken,
         config.slackAppToken,
         () => systemAgents,
-        persistSlackSession,
         identityLinkService,
         {
           keycloakExternalUrl: config.keycloakExternalUrl,
@@ -264,10 +241,6 @@ const slackWorker =
           callbackUrl: slackOauthCallbackUrl,
         },
         pendingSlackOAuthFlows,
-        {
-          find: findByInstanceAndThreadTs(db),
-          touch: touchSession(db),
-        },
         (agentId) => agentsRepo.getOwner(agentId),
         channelRegistry,
         config.brand.short,
@@ -282,7 +255,6 @@ const telegramWorker =
         config.namespace,
         chatSdkState,
         () => systemAgents,
-        persistTelegramSession,
         {
           isAuthorized: isThreadAuthorized(db),
           authorize: authorizeThread(db),
@@ -298,10 +270,6 @@ const telegramWorker =
           callbackUrl: telegramOauthCallbackUrl,
         },
         pendingTelegramOAuthFlows,
-        {
-          find: findByInstanceAndThreadTs(db),
-          touch: touchSession(db),
-        },
         isTermsAccepted,
         config.uiBaseUrl,
       )
@@ -465,6 +433,7 @@ async function shutdown() {
   onForeignReplySub.unsubscribe();
   onChannelTurnRelayedSub.unsubscribe();
   usage.stop();
+  audit.stop();
   await deliverySweeper.stop();
   await agentArtifactsSweeper.stop();
   await channelManager.stopAll();

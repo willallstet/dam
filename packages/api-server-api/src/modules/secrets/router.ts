@@ -47,7 +47,7 @@ export const secretsRouter = t.router({
     .mutation(({ ctx, input }) => ctx.secrets.delete(input.id)),
 
   // Per-agent grant linkage is configuration of the agent, not the credential —
-  // agents:manage. ADR-057.
+  // agents:manage. ADR-058.
   getAgentAccess: manageAgentByAgentIdProcedure
     .input(secretGetAgentAccessInputSchema)
     .query(({ ctx, input }) => ctx.secrets.getAgentAccess(input.agentId)),

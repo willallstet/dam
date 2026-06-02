@@ -1,8 +1,9 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
-import type { MiddlewareHandler } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
 import { ALL_SCOPES, type UserIdentity } from "api-server-api";
 import type { Result } from "../../core/result.js";
 import { emit, EventType } from "../../events.js";
+import { securityLog } from "../../core/security-log.js";
 import {
   isApiKeyToken,
   type ApiKeyValidationFailure,
@@ -10,7 +11,12 @@ import {
 } from "../../modules/api-keys/index.js";
 
 export class ForbiddenError extends Error {
-  constructor(public readonly requiredRole: string) {
+  constructor(
+    public readonly requiredRole: string,
+    /** Decoded subject of the rejected token — carried so the 403 can be
+     *  audited against a known principal. */
+    public readonly sub: string,
+  ) {
     super(`Missing required role: ${requiredRole}`);
   }
 }
@@ -19,6 +25,13 @@ export class UnauthorizedError extends Error {
   constructor(public readonly reason: string) {
     super(`Unauthorized: ${reason}`);
   }
+}
+
+/** Best-effort client IP behind Traefik/Istio (first `X-Forwarded-For` hop). */
+export function clientIp(c: Context): string | undefined {
+  const fwd = c.req.header("x-forwarded-for");
+  if (fwd) return fwd.split(",")[0]!.trim();
+  return c.req.header("x-real-ip") ?? undefined;
 }
 
 export interface AuthConfig {
@@ -41,7 +54,7 @@ export interface AuthConfig {
 }
 
 export interface AuthDeps {
-  /** Validates a `pk_…` (platform key) token, see ADR-057. Optional —
+  /** Validates a `pk_…` (platform key) token, see ADR-058. Optional —
    *  when omitted, API-key tokens are rejected so deployments without
    *  the api-keys module wired in remain JWT-only. */
   verifyApiKey?: (
@@ -82,7 +95,7 @@ export function createAuth(config: AuthConfig, deps: AuthDeps = {}) {
     const roles = realmAccess?.roles ?? [];
 
     if (config.requiredRole && !roles.includes(config.requiredRole)) {
-      throw new ForbiddenError(config.requiredRole);
+      throw new ForbiddenError(config.requiredRole, payload.sub!);
     }
 
     return {
@@ -110,7 +123,7 @@ export function createAuth(config: AuthConfig, deps: AuthDeps = {}) {
     if (!result.ok) throw new UnauthorizedError(result.error);
 
     const key = result.value;
-    // Per-request owner-active check (ADR-057). When the owner has been
+    // Per-request owner-active check (ADR-058). When the owner has been
     // deleted in Keycloak, any of their keys lose authority immediately —
     // no revocation sweep is needed. Role demotion within Keycloak is a
     // weaker form of this check and is deferred to a follow-up.
@@ -149,6 +162,15 @@ export function createAuth(config: AuthConfig, deps: AuthDeps = {}) {
 
     const authHeader = c.req.header("authorization");
     if (!authHeader?.startsWith("Bearer ")) {
+      securityLog("warn", "authn.deny", {
+        category: "authn",
+        actor: null,
+        actorKind: "external",
+        result: "failure",
+        reason: "missing-bearer",
+        target: c.req.path,
+        sourceIp: clientIp(c),
+      });
       return c.json({ error: "unauthorized" }, 401);
     }
 
@@ -173,6 +195,18 @@ export function createAuth(config: AuthConfig, deps: AuthDeps = {}) {
       return next();
     } catch (err) {
       if (err instanceof ForbiddenError) {
+        // Known principal denied for lack of a required role — the most
+        // forensically interesting authz event.
+        securityLog("warn", "authz.deny", {
+          category: "authz",
+          actor: err.sub,
+          actorKind: "user",
+          result: "failure",
+          reason: "missing-required-role",
+          target: c.req.path,
+          sourceIp: clientIp(c),
+          detail: { requiredRole: err.requiredRole },
+        });
         return c.json(
           {
             error: "forbidden",
@@ -181,6 +215,18 @@ export function createAuth(config: AuthConfig, deps: AuthDeps = {}) {
           403,
         );
       }
+      // Token present but invalid — log the verify-error class (never the
+      // token itself): expired/bad-signature/wrong-audience are replay and
+      // tampering signals.
+      securityLog("warn", "authn.deny", {
+        category: "authn",
+        actor: null,
+        actorKind: "external",
+        result: "failure",
+        reason: err instanceof Error ? err.name : "verify-failed",
+        target: c.req.path,
+        sourceIp: clientIp(c),
+      });
       return c.json({ error: "unauthorized" }, 401);
     }
   };

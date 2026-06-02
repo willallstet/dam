@@ -29,6 +29,12 @@ const configSchema = z.object({
    *  request would fail closed with no obvious cause — fail-fast at
    *  startup is the diagnosable shape. */
   releaseName: z.string().min(1, "PLATFORM_RELEASE_NAME must be set"),
+  /** Minimum severity emitted by the structured logger (`src/core/logger.ts`).
+   *  Governs the security audit trail "as usual" — it is logged at common
+   *  levels (deny/fail → warn, allow/success → info), so a default of `info`
+   *  keeps the trail on; raising the level reduces it. No separate audit
+   *  toggle. */
+  logLevel: z.enum(["error", "warn", "info", "debug"]).default("info"),
   port: z.coerce.number().default(4000),
   harnessServerPort: z.coerce.number().default(4001),
   harnessServerUrl: z.string().url(),
@@ -48,7 +54,7 @@ const configSchema = z.object({
    *  Must be stable across restarts — rotating it orphans every existing
    *  row. The Helm chart auto-generates and persists this in a Secret. */
   activityHmacKey: z.string().min(1, "ACTIVITY_HMAC_KEY must be set"),
-  /** HMAC pepper for at-rest API-key token digests (ADR-057). Must be stable
+  /** HMAC pepper for at-rest API-key token digests (ADR-058). Must be stable
    *  across restarts — rotating it invalidates every existing API key. The
    *  Helm chart auto-generates and persists this in a Secret. */
   apiKeyHmacKey: z.string().min(1, "API_KEY_HMAC_KEY must be set"),
@@ -138,6 +144,7 @@ export function loadConfig(): Config {
     serverVersion: pkg.version,
     namespace: process.env.NAMESPACE,
     releaseName: process.env.PLATFORM_RELEASE_NAME,
+    logLevel: process.env.LOG_LEVEL,
     port: process.env.PORT,
     harnessServerPort: process.env.MCP_PORT,
     harnessServerUrl: process.env.PLATFORM_HARNESS_SERVER_URL,

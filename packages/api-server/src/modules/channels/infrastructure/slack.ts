@@ -13,6 +13,7 @@ import type { ContentBlock } from "@agentclientprotocol/sdk/dist/schema/types.ge
 import {
   createAcpClient,
   createForkAcpClient,
+  type AcpClient,
 } from "../../../core/acp-client.js";
 import {
   EventType,
@@ -31,6 +32,7 @@ import {
   type KeycloakOAuthConfig,
 } from "./identity-oauth.js";
 import { formatError } from "../../../core/format-error.js";
+import { securityLog } from "../../../core/security-log.js";
 
 type BoltApp = InstanceType<typeof App>;
 
@@ -183,22 +185,9 @@ export function createSlackWorker(
   botToken: string,
   appToken: string,
   agents: () => AgentsService,
-  persistSession: (
-    sessionId: string,
-    agentId: string,
-    type: SessionType,
-    threadTs?: string,
-  ) => Promise<void>,
   identityLinks: IdentityLinkService,
   oauthConfig: KeycloakOAuthConfig,
   pendingOAuthFlows: Map<string, SlackOAuthPending>,
-  threadSessions: {
-    find: (
-      agentId: string,
-      threadTs: string,
-    ) => Promise<{ sessionId: string } | null>;
-    touch: (sessionId: string) => Promise<void>;
-  },
   getInstanceOwner: (agentId: string) => Promise<string | null>,
   channelRegistry: ChannelRegistry,
   /** Lowercase brand identifier used as the Slack slash command name (e.g.
@@ -236,6 +225,16 @@ export function createSlackWorker(
     }
   }
 
+  async function findThreadSession(acp: AcpClient, threadTs: string) {
+    const sessions = await acp.listSessions().catch((err) => {
+      process.stderr.write(
+        `[slack] listSessions failed: ${formatError(err)}\n`,
+      );
+      return [];
+    });
+    return sessions.find((s) => s.platform?.threadTs === threadTs) ?? null;
+  }
+
   async function relayOwnerTurn(ctx: {
     instanceName: string;
     channel: string;
@@ -267,16 +266,13 @@ export function createSlackWorker(
     try {
       await agents().ensureReady(instanceName);
       const acp = createAcpClient({ namespace, instanceName });
-      const onSessionCreated = (sid: string) =>
-        persistSession(
-          sid,
-          instanceName,
-          SessionType.ChannelSlack,
-          ctx.threadTs,
-        );
+      const platformMeta = {
+        type: SessionType.ChannelSlack,
+        threadTs: ctx.threadTs,
+      };
 
       let response: string;
-      const existing = await threadSessions.find(instanceName, ctx.threadTs);
+      const existing = await findThreadSession(acp, ctx.threadTs);
       const resumePrompt: string | ContentBlock[] =
         ctx.images.length === 0
           ? ctx.text
@@ -291,18 +287,17 @@ export function createSlackWorker(
             resumeSessionId: existing.sessionId,
             onImagesDropped,
           });
-          await threadSessions.touch(existing.sessionId);
         } catch {
           const prompt = await buildThreadPrompt(app, ctx);
           response = await acp.sendPrompt(prompt, {
-            onSessionCreated,
+            platformMeta,
             onImagesDropped,
           });
         }
       } else {
         const prompt = await buildThreadPrompt(app, ctx);
         response = await acp.sendPrompt(prompt, {
-          onSessionCreated,
+          platformMeta,
           onImagesDropped,
         });
       }
@@ -382,12 +377,7 @@ export function createSlackWorker(
       hasThread: args.hasThread,
       images: args.images,
     });
-    const existing = await threadSessions.find(
-      args.instanceName,
-      args.threadTs,
-    );
     const replyId = args.eventTs;
-    const existingSessionId = existing?.sessionId;
 
     const ready$ = events$().pipe(
       ofType<ForkReady>(EventType.ForkReady),
@@ -410,7 +400,6 @@ export function createSlackWorker(
             actorSub: args.keycloakSub,
             prompt,
             images: args.images,
-            existingSessionId,
           }).catch((err) => {
             process.stderr.write(
               `[slack/fork] outcome handler error: ${formatError(err)}\n`,
@@ -443,7 +432,6 @@ export function createSlackWorker(
       agentId: args.instanceName,
       foreignSub: args.keycloakSub,
       threadTs: args.threadTs,
-      ...(existing ? { sessionId: existing.sessionId } : {}),
       prompt,
       slackContext: {
         channelId: args.channel,
@@ -463,7 +451,6 @@ export function createSlackWorker(
       actorSub: string;
       prompt: string | ContentBlock[];
       images: FetchedImage[];
-      existingSessionId: string | undefined;
     },
   ) {
     if (!app) return;
@@ -481,23 +468,19 @@ export function createSlackWorker(
           );
         try {
           const acp = createForkAcpClient({ podIP: event.podIP });
-          const response = ctx.existingSessionId
+          const existing = await findThreadSession(acp, ctx.threadTs);
+          const response = existing
             ? await acp.sendPrompt(ctx.prompt, {
-                resumeSessionId: ctx.existingSessionId,
+                resumeSessionId: existing.sessionId,
                 onImagesDropped,
               })
             : await acp.sendPrompt(ctx.prompt, {
-                onSessionCreated: (sid) =>
-                  persistSession(
-                    sid,
-                    ctx.instanceName,
-                    SessionType.ChannelSlack,
-                    ctx.threadTs,
-                  ),
+                platformMeta: {
+                  type: SessionType.ChannelSlack,
+                  threadTs: ctx.threadTs,
+                },
                 onImagesDropped,
               });
-          if (ctx.existingSessionId)
-            await threadSessions.touch(ctx.existingSessionId);
           await postAssistantMessage(
             ctx.channel,
             ctx.threadTs,
@@ -640,6 +623,16 @@ export function createSlackWorker(
 
     const keycloakSub = await identityLinks.resolve("slack", slackUserId);
     if (!keycloakSub) {
+      // An unlinked (unauthenticated) Slack user probing to drive an agent.
+      securityLog("warn", "channel.authz_deny", {
+        category: "channel",
+        actor: null,
+        actorKind: "external",
+        surface: "slack",
+        decision: "deny",
+        reason: "unlinked",
+        detail: { slackUserId, channelId: event.channel },
+      });
       await app.client.chat.postEphemeral({
         channel: event.channel,
         user: slackUserId,
@@ -718,6 +711,18 @@ export function createSlackWorker(
     ]);
     const isOwner = ownerSub !== null && ownerSub === args.keycloakSub;
     if (!isOwner && !isAllowed) {
+      // A linked user who is neither owner nor on the allow-list tried to
+      // drive the agent.
+      securityLog("warn", "channel.authz_deny", {
+        category: "channel",
+        actor: args.keycloakSub,
+        actorKind: "user",
+        surface: "slack",
+        agentId: args.instanceName,
+        decision: "deny",
+        reason: "not-allowed",
+        detail: { slackUserId: args.slackUserId, channelId: args.channel },
+      });
       await app.client.chat.postEphemeral({
         channel: args.channel,
         user: args.slackUserId,
@@ -725,6 +730,16 @@ export function createSlackWorker(
       });
       return;
     }
+    // Authorized to drive — record who and on what basis.
+    securityLog("info", "channel.authz", {
+      category: "channel",
+      actor: args.keycloakSub,
+      actorKind: "user",
+      surface: "slack",
+      agentId: args.instanceName,
+      decision: "allow",
+      detail: { basis: isOwner ? "owner" : "allowlist" },
+    });
 
     if (!(await isTermsAccepted(args.keycloakSub))) {
       await app.client.chat.postEphemeral({

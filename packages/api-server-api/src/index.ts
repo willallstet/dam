@@ -55,6 +55,7 @@ export { agentSpecSchema } from "./modules/agents/schemas.js";
 export {
   scheduleSpecSchema,
   scheduleStatusSchema,
+  scheduleResetSessionInputSchema,
 } from "./modules/schedules/schemas.js";
 export type {
   Schedule,
@@ -166,22 +167,7 @@ export {
   SessionMode,
   sessionModeSchema,
 } from "./modules/sessions/types.js";
-export type {
-  SessionView,
-  SessionResolution,
-  TerminalStrategy,
-  SessionsService as SessionsApiService,
-} from "./modules/sessions/types.js";
-export {
-  sessionCreateInputSchema,
-  sessionDeleteInputSchema,
-  sessionListByScheduleIdInputSchema,
-  sessionListInputSchema,
-  sessionResetByScheduleIdInputSchema,
-  sessionResolveTerminalInputSchema,
-  sessionSetModeInputSchema,
-  terminalStrategySchema,
-} from "./modules/sessions/schemas.js";
+export type { SessionView } from "./modules/sessions/types.js";
 
 export {
   OP_INPUT,
@@ -299,16 +285,11 @@ export {
 export {
   platformTurnEndedNotificationSchema,
   platformTurnEndedParamsSchema,
-  platformSessionModeChangedNotificationSchema,
-  platformSessionModeChangedParamsSchema,
   buildPlatformTurnEndedNotification,
-  buildPlatformSessionModeChangedNotification,
 } from "./modules/acp/types.js";
 export type {
   PlatformTurnEndedNotification,
   PlatformTurnEndedParams,
-  PlatformSessionModeChangedNotification,
-  PlatformSessionModeChangedParams,
 } from "./modules/acp/types.js";
 
 // Brand
@@ -335,7 +316,7 @@ export {
 export { authConfigSchema } from "./modules/auth/types.js";
 export type { AuthConfig } from "./modules/auth/types.js";
 
-// API keys (ADR-057)
+// API keys (ADR-058)
 export { ALL_SCOPES, API_KEY_PREFIX } from "./modules/api-keys/types.js";
 // auth-procedures.ts (runProcedure, manageAgentsProcedure, …, checkAgentBinding)
 // is deliberately NOT re-exported here. It calls `initTRPC.create()` at module

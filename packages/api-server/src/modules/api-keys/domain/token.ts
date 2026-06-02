@@ -17,7 +17,7 @@ export interface ApiKeyTokenCodec {
  * (without the app secret) yields digests an attacker cannot even verify a
  * guessed token against. HMAC-SHA256 keeps per-request validation cheap, which
  * a slow KDF (argon2id/bcrypt/scrypt) would not — and a KDF buys nothing for a
- * high-entropy random secret. See ADR-057 § Alternatives Considered.
+ * high-entropy random secret. See ADR-058 § Alternatives Considered.
  *
  * The key must be stable across restarts — rotating it invalidates every
  * existing key (digests stop matching). The Helm chart generates and persists

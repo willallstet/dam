@@ -13,7 +13,6 @@ import type {
   TermsService,
   UserIdentity,
 } from "api-server-api";
-import { buildPlatformSessionModeChangedNotification } from "api-server-api";
 import type { CoreV1Api } from "@kubernetes/client-node";
 import type { Db } from "db";
 import type { SkillSourceSeed } from "../../modules/skills/index.js";
@@ -31,9 +30,6 @@ import {
   composeSchedulesForOwner,
   type SchedulesBoot,
 } from "../../modules/schedules/index.js";
-import { composeSessionsModule } from "../../modules/sessions/index.js";
-import { upsertSession } from "../../modules/sessions/infrastructure/sessions-repository.js";
-import { SessionMode, SessionType } from "api-server-api";
 import { composeSkillsModule } from "../../modules/skills/compose.js";
 import { composeFilesModule } from "../../modules/files/files-service.js";
 import { createSlackOAuthRoutes } from "../../modules/channels/infrastructure/slack-oauth.js";
@@ -48,11 +44,11 @@ import {
 } from "../../modules/channels/infrastructure/telegram-threads-repository.js";
 import { createAcpRelay } from "./acp-relay.js";
 import { createTerminalRelay } from "./terminal-relay.js";
-import { getSessionMode } from "../../modules/sessions/infrastructure/sessions-repository.js";
 import { createOAuthRoutes } from "./oauth.js";
 import { mountBrandIconRoutes } from "./brand-icon.js";
 import type { Config } from "../../config.js";
-import { createAuth, ForbiddenError } from "./auth.js";
+import { createAuth, ForbiddenError, clientIp } from "./auth.js";
+import { securityLog } from "../../core/security-log.js";
 import { createTermsGate } from "./terms-gate.js";
 import type { IsAcceptedPort } from "../../modules/terms/compose.js";
 import { createK8sSecretsPort } from "./../../modules/secrets/infrastructure/k8s-secrets-port.js";
@@ -193,7 +189,7 @@ export function startApiServerApp(deps: ApiServerAppDeps) {
       agentsRepo.isOwnedBy(agentId, ownerSub),
   });
 
-  // Positive cache for the per-request owner-active probe (ADR-057). The
+  // Positive cache for the per-request owner-active probe (ADR-058). The
   // probe hits Keycloak's admin API; a CI burst against API keys would
   // otherwise pressure Keycloak and add per-call latency. We cache only
   // the *positive* result for 60s — a deleted/disabled owner remains
@@ -371,13 +367,13 @@ export function startApiServerApp(deps: ApiServerAppDeps) {
     return agentsRepo.isOwnedBy(agentId, owner);
   }
 
-  /** ADR-057 binding check for non-tRPC surfaces (in-pod relay, WS upgrade,
+  /** ADR-058 binding check for non-tRPC surfaces (in-pod relay, WS upgrade,
    *  import proxy). Returns true when the principal may operate `agentId`. */
   function hasAgentBinding(user: UserIdentity, agentId: string): boolean {
     return user.agentIds === "*" || user.agentIds.includes(agentId);
   }
 
-  /** ADR-057 scope guard for non-tRPC surfaces. tRPC routers use the
+  /** ADR-058 scope guard for non-tRPC surfaces. tRPC routers use the
    *  procedure builders in api-server-api/auth-procedures.ts. */
   function hasScope(user: UserIdentity, scope: Scope): boolean {
     return user.scopes.includes(scope);
@@ -387,9 +383,21 @@ export function startApiServerApp(deps: ApiServerAppDeps) {
     const user = c.get("user");
     const agentId = c.req.param("id")!;
     if (!(await verifyOwner(agentId, user.sub))) {
+      // The 404 is otherwise indistinguishable from a genuinely missing
+      // agent — log the cross-tenant access attempt.
+      securityLog("warn", "authz.owner_mismatch", {
+        category: "authz",
+        actor: user.sub,
+        actorKind: "user",
+        agentId,
+        decision: "deny",
+        reason: "not-owner",
+        sourceIp: clientIp(c),
+        detail: { surface: "trpc-proxy" },
+      });
       return c.json({ error: "not found" }, 404);
     }
-    // ADR-057: in-pod relay is the most powerful surface in the system
+    // ADR-058: in-pod relay is the most powerful surface in the system
     // (ACP frames, pod-files, terminal). Require `agents:run` + per-key
     // agent binding before forwarding to the agent-runtime.
     if (!hasScope(user, "agents:run")) {
@@ -476,9 +484,19 @@ export function startApiServerApp(deps: ApiServerAppDeps) {
     const user = c.get("user");
     const agentId = c.req.param("id")!;
     if (!(await verifyOwner(agentId, user.sub))) {
+      securityLog("warn", "authz.owner_mismatch", {
+        category: "authz",
+        actor: user.sub,
+        actorKind: "user",
+        agentId,
+        decision: "deny",
+        reason: "not-owner",
+        sourceIp: clientIp(c),
+        detail: { surface: "import" },
+      });
       return c.json({ error: "not found" }, 404);
     }
-    // ADR-057 § Scope definitions: pod-files (incl. `dam import`) is
+    // ADR-058 § Scope definitions: pod-files (incl. `dam import`) is
     // `agents:run` — the agent itself can write the same paths during a
     // run, so import is not a new capability for an agents:run principal.
     if (!hasScope(user, "agents:run")) {
@@ -674,23 +692,10 @@ export function startApiServerApp(deps: ApiServerAppDeps) {
       cleanupHooks: agentCleanupHooks,
       runtimeMutator,
     });
-    const { schedules, isOwnedSchedule } = composeSchedulesForOwner({
+    const { schedules } = composeSchedulesForOwner({
       boot: schedulesBoot,
       owner: user.sub,
       agentExists: async (agentId) => (await agents.get(agentId)) !== null,
-    });
-    const { sessions } = composeSessionsModule({
-      db,
-      namespace: config.namespace,
-      isOwnedAgent,
-      isOwnedSchedule,
-      closeTerminalSession: terminalRelay.closeSession,
-      notifyModeChange: (agentId, sessionId, mode) => {
-        const frame = JSON.stringify(
-          buildPlatformSessionModeChangedNotification({ sessionId, mode }),
-        );
-        redisBus.publish(injectChannelOf(agentId), frame).catch(() => {});
-      },
     });
     const skills = composeSkillsModule(
       api,
@@ -753,7 +758,6 @@ export function startApiServerApp(deps: ApiServerAppDeps) {
         templates,
         agents,
         schedules,
-        sessions,
         secrets,
         channels: { available: channelManager.availableChannels() },
         connections,
@@ -770,7 +774,6 @@ export function startApiServerApp(deps: ApiServerAppDeps) {
     });
   });
 
-  const persistAcpSession = upsertSession(db);
   const acpRelay = createAcpRelay(
     config.namespace,
     agentsRepo,
@@ -781,18 +784,9 @@ export function startApiServerApp(deps: ApiServerAppDeps) {
           .resolveIdentity(id)
           .then((r) => (r ? { ownerSub: r.owner, agentId: r.agentId } : null)),
     },
-    (sessionId, agentId) =>
-      persistAcpSession(
-        sessionId,
-        agentId,
-        SessionMode.Chat,
-        SessionType.Regular,
-      ),
   );
 
-  const terminalRelay = createTerminalRelay(config.namespace, agentsRepo, {
-    getSessionMode: getSessionMode(db),
-  });
+  const terminalRelay = createTerminalRelay(config.namespace, agentsRepo);
 
   const server = serve({ fetch: app.fetch, port: config.port }, () => {
     process.stderr.write(
@@ -835,8 +829,30 @@ export function startApiServerApp(deps: ApiServerAppDeps) {
       return;
     }
 
+    // `relayKind` and `agentId` identify the target credentialed pod; the
+    // token rides in the query string and must NEVER be logged (only the
+    // pathname, which carries no secret).
+    const relayKind = match[2]!; // "acp" | "terminal"
+    const agentId = decodeURIComponent(match[1]!);
+    const fwd = req.headers["x-forwarded-for"];
+    const sourceIp =
+      (typeof fwd === "string" ? fwd.split(",")[0]!.trim() : undefined) ??
+      req.socket.remoteAddress ??
+      undefined;
+
     const token = url.searchParams.get("token");
     if (!token) {
+      securityLog("warn", "ws.authn_deny", {
+        category: "authn",
+        actor: null,
+        actorKind: "external",
+        surface: "ws",
+        agentId,
+        decision: "deny",
+        reason: "missing-token",
+        sourceIp,
+        detail: { relay: relayKind },
+      });
       socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
       socket.destroy();
       return;
@@ -846,20 +862,46 @@ export function startApiServerApp(deps: ApiServerAppDeps) {
     try {
       user = (await auth.verify(token)).user;
     } catch (err) {
-      const status =
-        err instanceof ForbiddenError ? "403 Forbidden" : "401 Unauthorized";
-      socket.write(`HTTP/1.1 ${status}\r\n\r\n`);
+      const forbidden = err instanceof ForbiddenError;
+      securityLog("warn", forbidden ? "ws.authz_deny" : "ws.authn_deny", {
+        category: forbidden ? "authz" : "authn",
+        actor: forbidden ? err.sub : null,
+        actorKind: forbidden ? "user" : "external",
+        surface: "ws",
+        agentId,
+        decision: "deny",
+        reason: forbidden
+          ? "missing-required-role"
+          : err instanceof Error
+            ? err.name
+            : "verify-failed",
+        sourceIp,
+        detail: { relay: relayKind },
+      });
+      socket.write(
+        `HTTP/1.1 ${forbidden ? "403 Forbidden" : "401 Unauthorized"}\r\n\r\n`,
+      );
       socket.destroy();
       return;
     }
 
-    const agentId = decodeURIComponent(match[1]);
     if (!(await verifyOwner(agentId, user.sub))) {
+      securityLog("warn", "ws.owner_mismatch", {
+        category: "authz",
+        actor: user.sub,
+        actorKind: "user",
+        surface: "ws",
+        agentId,
+        decision: "deny",
+        reason: "not-owner",
+        sourceIp,
+        detail: { relay: relayKind },
+      });
       socket.write("HTTP/1.1 404 Not Found\r\n\r\n");
       socket.destroy();
       return;
     }
-    // ADR-057: ACP and terminal WebSocket attachment is `agents:run`
+    // ADR-058: ACP and terminal WebSocket attachment is `agents:run`
     // plus per-key agent binding. Without these checks, an exfiltrated
     // key bound to one agent could speak ACP to any owned agent.
     if (!hasScope(user, "agents:run") || !hasAgentBinding(user, agentId)) {
@@ -869,12 +911,36 @@ export function startApiServerApp(deps: ApiServerAppDeps) {
     }
 
     if (!(await isTermsAccepted(user.sub))) {
+      securityLog("warn", "ws.terms_block", {
+        category: "authz",
+        actor: user.sub,
+        actorKind: "user",
+        surface: "ws",
+        agentId,
+        decision: "deny",
+        reason: "terms-not-accepted",
+        sourceIp,
+        detail: { relay: relayKind },
+      });
       socket.write("HTTP/1.1 412 Precondition Failed\r\n\r\n");
       socket.destroy();
       return;
     }
 
-    const relay = match[2] === "acp" ? acpRelay : terminalRelay;
+    // Success: a human (or token-bearer) is attaching to a credentialed pod —
+    // an interactive shell (terminal) or prompt channel (acp). High-value
+    // forensic event in its own right.
+    securityLog("info", "relay.attach", {
+      category: "privileged",
+      actor: user.sub,
+      actorKind: "user",
+      surface: "ws",
+      agentId,
+      result: "success",
+      sourceIp,
+      detail: { relay: relayKind },
+    });
+    const relay = relayKind === "acp" ? acpRelay : terminalRelay;
     relay.handleUpgrade(req, socket, head, agentId);
   });
 

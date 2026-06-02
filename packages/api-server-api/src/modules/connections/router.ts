@@ -46,7 +46,7 @@ export const connectionsRouter = t.router({
     .mutation(({ ctx, input }) => ctx.connections.deleteConnection(input.id)),
 
   // Per-agent grant linkage lives under agents:manage (the agent is the
-  // resource being configured, not the connection itself). ADR-057.
+  // resource being configured, not the connection itself). ADR-058.
   getAgentConnections: manageAgentByAgentIdProcedure
     .input(connectionGetAgentConnectionsInputSchema)
     .query(({ ctx, input }) =>

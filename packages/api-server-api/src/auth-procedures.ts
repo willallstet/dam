@@ -7,7 +7,7 @@ import type { Scope } from "./modules/api-keys/types.js";
 /**
  * tRPC middleware that gates a procedure to one or more scopes. The request
  * is allowed if the principal has ANY of the listed scopes (OR semantics).
- * See ADR-057 for the scope vocabulary.
+ * See ADR-058 for the scope vocabulary.
  */
 function requireScope(...scopes: readonly Scope[]) {
   return t.middleware(({ ctx, next }) => {
@@ -48,7 +48,7 @@ export const readAgentProcedure = t.procedure.use(
  * Procedure available **only** to principals authenticated via an interactive
  * Keycloak session, not via API keys. The `api-keys.*` management surface
  * (mint / list / revoke) sits here so an exfiltrated key cannot mint or
- * revoke other keys — the single privilege-escalation barrier in ADR-057.
+ * revoke other keys — the single privilege-escalation barrier in ADR-058.
  */
 export const browserOnlyProcedure = t.procedure.use(({ ctx, next }) => {
   if (ctx.user.keyId !== undefined) {
@@ -65,7 +65,7 @@ export const browserOnlyProcedure = t.procedure.use(({ ctx, next }) => {
  * Per-call agent-binding guard. Call from a service or procedure handler
  * whenever the operation targets a specific Agent ID. Pass-through when the
  * principal's binding is wildcard; throws when the key is restricted to a
- * different set. ADR-057.
+ * different set. ADR-058.
  *
  * Prefer the `*Agent{ById,ByAgentId}Procedure` builders below; use this raw
  * helper only when the agent ID is resolved from another resource.
@@ -121,7 +121,7 @@ export const runAgentByAgentIdProcedure = runProcedure
  * `agents.create` is the one mutation with no agentId to bind against — the
  * agent doesn't exist yet. A restricted key must therefore not be able to
  * create new agents, otherwise it expands its own blast radius beyond what
- * the user authorized at mint time. ADR-057.
+ * the user authorized at mint time. ADR-058.
  */
 export const manageAgentCreateProcedure = manageAgentsProcedure.use(
   ({ ctx, next }) => {

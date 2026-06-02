@@ -10,6 +10,7 @@ import type {
 } from "../stored-channel.js";
 import type { PostMessageOptions } from "../services/channel-manager.js";
 import { createAcpClient } from "../../../core/acp-client.js";
+import { securityLog } from "../../../core/security-log.js";
 import {
   buildAuthorizeUrl,
   generatePkce,
@@ -120,28 +121,28 @@ export function createTelegramWorker(
   namespace: string,
   state: StateAdapter,
   agents: () => AgentsService,
-  persistSession: (
-    sessionId: string,
-    agentId: string,
-    type: SessionType,
-    threadId?: string,
-  ) => Promise<void>,
   threads: TelegramThreadsRepo,
   oauthConfig: KeycloakOAuthConfig,
   pendingOAuthFlows: Map<string, TelegramOAuthPending>,
-  threadSessions: {
-    find: (
-      agentId: string,
-      threadId: string,
-    ) => Promise<{ sessionId: string } | null>;
-    touch: (sessionId: string) => Promise<void>;
-  },
   isTermsAccepted: (sub: string) => Promise<boolean>,
   uiBaseUrl: string,
   emit: (event: DomainEvent) => void = defaultEmit,
 ): TelegramWorker {
   const bots = new Map<string, InstanceBot>();
   const lastThread = new Map<string, Thread>();
+
+  // The thread's session carries this threadId in `_meta.platform.threadTs`
+  // (ADR-055) — resolved off the agent, no server store.
+  async function findThreadSession(instanceName: string, threadId: string) {
+    const acp = createAcpClient({ namespace, instanceName });
+    const sessions = await acp.listSessions().catch((err) => {
+      process.stderr.write(
+        `[telegram:${instanceName}] listSessions failed: ${err}\n`,
+      );
+      return [];
+    });
+    return sessions.find((s) => s.platform?.threadTs === threadId) ?? null;
+  }
 
   async function relayToInstance(
     instanceName: string,
@@ -168,11 +169,10 @@ export function createTelegramWorker(
       await agents().ensureReady(instanceName);
       const acp = createAcpClient({ namespace, instanceName });
 
-      const existing = await threadSessions.find(instanceName, thread.id);
+      const existing = await findThreadSession(instanceName, thread.id);
       if (existing) {
         try {
           await acp.sendPrompt(text, { resumeSessionId: existing.sessionId });
-          await threadSessions.touch(existing.sessionId);
           outcome = "success";
           return;
         } catch (err) {
@@ -182,13 +182,10 @@ export function createTelegramWorker(
         }
       }
       await acp.sendPrompt(freshPrompt, {
-        onSessionCreated: (sid) =>
-          persistSession(
-            sid,
-            instanceName,
-            SessionType.ChannelTelegram,
-            thread.id,
-          ),
+        platformMeta: {
+          type: SessionType.ChannelTelegram,
+          threadTs: thread.id,
+        },
       });
       outcome = "success";
     } catch (err) {
@@ -230,6 +227,16 @@ export function createTelegramWorker(
           telegramUserId,
         );
         if (!isAdmin) {
+          securityLog("warn", "channel.authz_deny", {
+            category: "channel",
+            actor: null,
+            actorKind: "external",
+            surface: "telegram",
+            agentId: instanceName,
+            decision: "deny",
+            reason: "not-group-admin",
+            detail: { telegramUserId, threadId: thread.id, command: "login" },
+          });
           await thread.post("Only group admins can /login.");
           return;
         }
@@ -269,6 +276,16 @@ export function createTelegramWorker(
           telegramUserId,
         );
         if (!isAdmin) {
+          securityLog("warn", "channel.authz_deny", {
+            category: "channel",
+            actor: null,
+            actorKind: "external",
+            surface: "telegram",
+            agentId: instanceName,
+            decision: "deny",
+            reason: "not-group-admin",
+            detail: { telegramUserId, threadId: thread.id, command: "logout" },
+          });
           await thread.post("Only group admins can /logout.");
           return;
         }
@@ -280,6 +297,15 @@ export function createTelegramWorker(
         return;
       }
       await threads.revoke(instanceName, thread.id);
+      securityLog("info", "channel.thread_revoked", {
+        category: "authz-list",
+        actor: null,
+        actorKind: "external",
+        surface: "telegram",
+        agentId: instanceName,
+        result: "success",
+        detail: { threadId: thread.id, byTelegramUserId: telegramUserId },
+      });
       await thread.post(
         "Conversation revoked. Send /login to authorize again.",
       );
@@ -320,6 +346,22 @@ export function createTelegramWorker(
 
       const authorized = await threads.isAuthorized(instanceName, thread.id);
       if (!authorized) {
+        // An unauthorized conversation attempting to drive the agent. Repeated
+        // hits from the same thread are the probing signal.
+        securityLog("warn", "channel.inbound.unauthorized", {
+          category: "channel",
+          actor: null,
+          actorKind: "external",
+          surface: "telegram",
+          agentId: instanceName,
+          decision: "deny",
+          reason: "thread-not-authorized",
+          detail: {
+            telegramUserId: message.author.userId,
+            threadId: thread.id,
+            isDM: thread.isDM,
+          },
+        });
         // Only prompt for /login in DMs. Staying silent in groups avoids
         // spamming unauthorized group chats that the bot happens to be in.
         if (thread.isDM) {

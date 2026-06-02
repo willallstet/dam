@@ -12,6 +12,7 @@ import {
   buildAcpPermissionResponse,
   pickOptionId,
 } from "../infrastructure/wrapper-response-frames.js";
+import { securityLog } from "../../../core/security-log.js";
 
 /** Notifier for cross-replica wake-up of held ext_authz calls. Publishes to
  *  `approval:<id>` on Redis; consumers read the verdict from Postgres. The
@@ -52,7 +53,7 @@ export interface CreateApprovalsServiceDeps {
   wrapperFrameSender: WrapperFrameSender;
   isAgentOwnedBy(agentId: string, ownerSub: string): Promise<boolean>;
   ownerSub: string;
-  /** Per-key agent allowlist (ADR-057). `"*"` for browser-flow callers
+  /** Per-key agent allowlist (ADR-058). `"*"` for browser-flow callers
    *  and API keys with wildcard binding. Restricted keys see only their
    *  bound agents, and any mutation against a non-bound row throws
    *  FORBIDDEN — single-agent IDs are not opaque to callers, so silent
@@ -87,7 +88,22 @@ async function loadOwned(
   id: string,
 ): Promise<PendingApprovalRow | null> {
   const row = await deps.repo.getPending(id);
-  if (!row || row.ownerSub !== deps.ownerSub) return null;
+  if (!row) return null;
+  if (row.ownerSub !== deps.ownerSub) {
+    // A caller acting on an approval that isn't theirs — cross-tenant
+    // approval-tampering attempt.
+    securityLog("warn", "authz.owner_mismatch", {
+      category: "authz",
+      actor: deps.ownerSub,
+      actorKind: "user",
+      agentId: row.agentId,
+      decision: "deny",
+      reason: "not-owner",
+      correlationId: id,
+      detail: { surface: "approval.verdict" },
+    });
+    return null;
+  }
   if (!matchesBinding(deps.agentBinding, row.agentId)) {
     throw new TRPCError({
       code: "FORBIDDEN",
@@ -95,6 +111,26 @@ async function loadOwned(
     });
   }
   return row;
+}
+
+/** One audit line per HITL verdict. correlationId === the pending-approval id,
+ *  which is the same id the ext_authz gate logs on hold-open / hold-resolve —
+ *  so the held request and the human decision join on it. */
+function auditVerdict(
+  deps: CreateApprovalsServiceDeps,
+  row: PendingApprovalRow,
+  decision: "allow" | "deny",
+  detail: Record<string, unknown>,
+): void {
+  securityLog("info", "approval.verdict", {
+    category: "approval",
+    actor: deps.ownerSub,
+    actorKind: "user",
+    agentId: row.agentId,
+    decision,
+    correlationId: row.id,
+    detail,
+  });
 }
 
 export function createApprovalsService(
@@ -123,6 +159,10 @@ export function createApprovalsService(
       if (row.type === "ext_authz") {
         await deps.repo.resolvePending(id, "allow_once", deps.ownerSub);
         await deps.notifier.notifyResolved(id);
+        auditVerdict(deps, row, "allow", {
+          verdict: "allow_once",
+          ruleWritten: false,
+        });
         return;
       }
       await resolveAndDeliverAcpNative(deps, row, "allow_once");
@@ -147,6 +187,13 @@ export function createApprovalsService(
         // approve-permanent flow: rule is written, future retries match.
         await deps.repo.resolvePending(id, "allow", deps.ownerSub);
         await deps.notifier.notifyResolved(id);
+        auditVerdict(deps, row, "allow", {
+          verdict: "allow",
+          ruleWritten: true,
+          host: row.payload.host,
+          method: row.payload.method,
+          pathPattern: row.payload.path,
+        });
         return;
       }
       // ACP-native: persistence ("allow_always") is the harness's own
@@ -176,6 +223,14 @@ export function createApprovalsService(
         });
         await deps.repo.resolvePending(id, "allow", deps.ownerSub);
         await deps.notifier.notifyResolved(id);
+        // Host-wide allow (method:*/path:*) — a broad widening of the
+        // allow-list; flag it.
+        auditVerdict(deps, row, "allow", {
+          verdict: "allow",
+          ruleWritten: true,
+          host: row.payload.host,
+          hostWide: true,
+        });
         return;
       }
       await resolveAndDeliverAcpNative(deps, row, "allow");
@@ -197,6 +252,13 @@ export function createApprovalsService(
         });
         await deps.repo.resolvePending(id, "deny", deps.ownerSub);
         await deps.notifier.notifyResolved(id);
+        auditVerdict(deps, row, "deny", {
+          verdict: "deny",
+          ruleWritten: true,
+          host: row.payload.host,
+          method: row.payload.method,
+          pathPattern: row.payload.path,
+        });
         return;
       }
       await resolveAndDeliverAcpNative(deps, row, "deny");
@@ -210,6 +272,10 @@ export function createApprovalsService(
       if (row.type === "ext_authz") {
         await deps.repo.resolvePending(id, "deny_once", deps.ownerSub);
         await deps.notifier.notifyResolved(id);
+        auditVerdict(deps, row, "deny", {
+          verdict: "deny_once",
+          ruleWritten: false,
+        });
         return;
       }
       await resolveAndDeliverAcpNative(deps, row, "deny_once");
@@ -232,6 +298,10 @@ async function resolveAndDeliverAcpNative(
 ): Promise<void> {
   if (row.payload.kind !== "acp_native") return;
   await deps.repo.resolvePending(row.id, verdict, deps.ownerSub);
+  auditVerdict(deps, row, verdict.startsWith("allow") ? "allow" : "deny", {
+    verdict,
+    native: true,
+  });
   const rpcId = row.payload.rpcId;
   if (rpcId === undefined || rpcId === null) return;
   const optionId = pickOptionId(row.payload.options ?? [], verdict);
