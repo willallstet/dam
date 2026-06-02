@@ -236,7 +236,7 @@ export function createAgentsService(deps: {
     async update(input: AgentUpdateInput) {
       let env = input.env;
       if (env !== undefined) {
-        const current = await deps.repo.get(input.id, deps.owner);
+        const current = await deps.repo.get(input.agentId, deps.owner);
         env = preserveProtectedEnvs(current?.spec.env ?? [], env);
       }
       const patch: Record<string, unknown> = {};
@@ -245,15 +245,19 @@ export function createAgentsService(deps: {
         patch.description = input.description;
       if (env !== undefined) patch.env = env;
       if (input.secretRef !== undefined) patch.secretRef = input.secretRef;
-      const infra = await deps.repo.updateSpec(input.id, deps.owner, patch);
+      const infra = await deps.repo.updateSpec(
+        input.agentId,
+        deps.owner,
+        patch,
+      );
       if (!infra) return null;
 
       if (input.allowedUserEmails !== undefined) {
         const subs = await emailsToSubs(input.allowedUserEmails);
-        await deps.setAllowedUsers(input.id, subs);
+        await deps.setAllowedUsers(input.agentId, subs);
       }
 
-      emit({ type: EventType.AgentUpdated, agentId: input.id });
+      emit({ type: EventType.AgentUpdated, agentId: input.agentId });
       return project(infra);
     },
 

@@ -41,7 +41,9 @@ export function createAgentService(deps: { trpc: TrpcClient }): AgentService {
     },
     async get(id) {
       try {
-        return ok((await deps.trpc.agents.get.query({ id })) as AgentView);
+        return ok(
+          (await deps.trpc.agents.get.query({ agentId: id })) as AgentView,
+        );
       } catch (e) {
         if ((e as any)?.data?.code === "NOT_FOUND") return ok(null);
         return classifyTrpcError(e);
@@ -49,7 +51,7 @@ export function createAgentService(deps: { trpc: TrpcClient }): AgentService {
     },
     async deleteAgent(agentId) {
       try {
-        await deps.trpc.agents.delete.mutate({ id: agentId });
+        await deps.trpc.agents.delete.mutate({ agentId });
         return ok(undefined);
       } catch (e) {
         return notFoundOnMutate(e, agentId);
@@ -57,7 +59,7 @@ export function createAgentService(deps: { trpc: TrpcClient }): AgentService {
     },
     async restart(id) {
       try {
-        await deps.trpc.agents.restart.mutate({ id });
+        await deps.trpc.agents.restart.mutate({ agentId: id });
         return ok(undefined);
       } catch (e) {
         return notFoundOnMutate(e, id);

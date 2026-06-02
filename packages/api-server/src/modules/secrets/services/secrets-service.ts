@@ -205,7 +205,14 @@ export function createSecretsService(deps: {
   /** Owner sub for the calling user, stamped onto auto-inserted rules
    *  (`decided_by`). Required when `connectionRules` is set. */
   ownerSub?: string;
+  /** Guards `{get,set}AgentAccess` against agentIds the caller doesn't own.
+   *  Optional so non-cluster tests can omit it (defaults to pass-through). */
+  isAgentOwnedBy?: (agentId: string, ownerSub: string) => Promise<boolean>;
 }): SecretsService {
+  async function assertAgentOwned(agentId: string): Promise<boolean> {
+    if (!deps.isAgentOwnedBy || !deps.ownerSub) return true;
+    return deps.isAgentOwnedBy(agentId, deps.ownerSub);
+  }
   async function createOne(input: InternalSecretCreate): Promise<SecretView> {
     const hostPattern = hostPatternFor(input.type, input.hostPattern);
     const id = randomUUID();
@@ -452,6 +459,7 @@ export function createSecretsService(deps: {
     },
 
     async getAgentAccess(agentId: string) {
+      if (!(await assertAgentOwned(agentId))) return { secretIds: [] };
       const grants = await deps.grants.get(agentId);
       const allSecrets = await deps.k8sPort.listSecrets();
       const twinIds = new Set(
@@ -463,6 +471,9 @@ export function createSecretsService(deps: {
     },
 
     async setAgentAccess(agentId: string, access: AgentAccess) {
+      if (!(await assertAgentOwned(agentId))) {
+        throw new Error("agent not found");
+      }
       const allSecrets = await deps.k8sPort.listSecrets();
       const twinIds = new Set(
         allSecrets.filter((s) => s.primarySecretId).map((s) => s.id),

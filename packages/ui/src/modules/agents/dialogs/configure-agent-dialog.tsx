@@ -302,7 +302,7 @@ export function ConfigureAgentDialog({
         Boolean(dirtyFields.envVars) || Boolean(dirtyFields.name);
       if (wantsAgentUpdate) {
         await updateAgent.mutateAsync({
-          id: agentId,
+          agentId,
           ...(dirtyFields.envVars
             ? { env: sanitizeEnvVars(values.envVars) }
             : {}),

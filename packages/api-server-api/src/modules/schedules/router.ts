@@ -2,6 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { t } from "../../trpc.js";
 import {
   checkAgentBinding,
+  manageAgentByAgentIdProcedure,
   manageAgentsProcedure,
 } from "../../auth-procedures.js";
 import {
@@ -46,14 +47,14 @@ function toView(sched: Schedule) {
 }
 
 export const schedulesRouter = t.router({
-  list: manageAgentsProcedure
+  list: manageAgentByAgentIdProcedure
     .input(scheduleListInputSchema)
     .query(async ({ ctx, input }) => {
-      checkAgentBinding(ctx, input.agentId);
       const schedules = await ctx.schedules.list(input.agentId);
       return schedules.map(toView);
     }),
 
+  // agentId resolved from the loaded schedule — binding check stays inline.
   get: manageAgentsProcedure
     .input(scheduleGetInputSchema)
     .query(async ({ ctx, input }) => {
@@ -63,18 +64,16 @@ export const schedulesRouter = t.router({
       return toView(sched);
     }),
 
-  createCron: manageAgentsProcedure
+  createCron: manageAgentByAgentIdProcedure
     .input(scheduleCreateCronInputSchema)
     .mutation(async ({ ctx, input }) => {
-      checkAgentBinding(ctx, input.agentId);
       const sched = await ctx.schedules.createCron(input);
       return toView(sched);
     }),
 
-  createRRule: manageAgentsProcedure
+  createRRule: manageAgentByAgentIdProcedure
     .input(scheduleCreateRRuleInputSchema)
     .mutation(async ({ ctx, input }) => {
-      checkAgentBinding(ctx, input.agentId);
       const sched = await ctx.schedules.createRRule(input);
       return toView(sched);
     }),

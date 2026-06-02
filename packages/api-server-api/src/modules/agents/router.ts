@@ -1,8 +1,9 @@
 import { TRPCError } from "@trpc/server";
 import { t } from "../../trpc.js";
 import {
-  checkAgentBinding,
-  manageAgentsProcedure,
+  manageAgentByAgentIdProcedure,
+  manageAgentCreateProcedure,
+  readAgentByAgentIdProcedure,
   readAgentProcedure,
 } from "../../auth-procedures.js";
 import {
@@ -18,25 +19,6 @@ import {
   agentWakeInputSchema,
 } from "./schemas.js";
 import type { Agent } from "./types.js";
-
-/**
- * `agents.create` is the one mutation that has no `agentId` to match
- * against the principal's binding — the agent doesn't exist yet. A
- * key bound to a specific agent set must therefore not be able to
- * create new agents, otherwise it expands its own blast radius beyond
- * what the user intended at mint time. ADR-057.
- */
-function rejectIfRestricted(ctx: {
-  user: { agentIds: readonly string[] | "*" };
-}): void {
-  if (ctx.user.agentIds !== "*") {
-    throw new TRPCError({
-      code: "FORBIDDEN",
-      message:
-        "Agent creation requires a wildcard-bound key (or an interactive session). Restricted keys cannot mint new agents.",
-    });
-  }
-}
 
 function toView(agent: Agent) {
   return {
@@ -65,66 +47,60 @@ export const agentsRouter = t.router({
     return allowed.map(toView);
   }),
 
-  get: readAgentProcedure
+  get: readAgentByAgentIdProcedure
     .input(agentGetInputSchema)
     .query(async ({ ctx, input }) => {
-      checkAgentBinding(ctx, input.id);
-      const agent = await ctx.agents.get(input.id);
+      const agent = await ctx.agents.get(input.agentId);
       if (!agent) throw new TRPCError({ code: "NOT_FOUND" });
       return toView(agent);
     }),
 
-  create: manageAgentsProcedure
+  create: manageAgentCreateProcedure
     .input(agentCreateInputSchema)
     .mutation(async ({ ctx, input }) => {
-      rejectIfRestricted(ctx);
       const agent = await ctx.agents.create(input);
       return toView(agent);
     }),
 
-  update: manageAgentsProcedure
+  update: manageAgentByAgentIdProcedure
     .input(agentUpdateInputSchema)
     .mutation(async ({ ctx, input }) => {
-      checkAgentBinding(ctx, input.id);
       const agent = await ctx.agents.update(input);
       if (!agent) throw new TRPCError({ code: "NOT_FOUND" });
       return toView(agent);
     }),
 
-  delete: manageAgentsProcedure
+  delete: manageAgentByAgentIdProcedure
     .input(agentDeleteInputSchema)
-    .mutation(({ ctx, input }) => {
-      checkAgentBinding(ctx, input.id);
-      return ctx.agents.delete(input.id);
-    }),
+    .mutation(({ ctx, input }) => ctx.agents.delete(input.agentId)),
 
-  restart: manageAgentsProcedure
+  restart: manageAgentByAgentIdProcedure
     .input(agentRestartInputSchema)
     .mutation(async ({ ctx, input }) => {
-      checkAgentBinding(ctx, input.id);
-      const ok = await ctx.agents.restart(input.id);
+      const ok = await ctx.agents.restart(input.agentId);
       if (!ok) throw new TRPCError({ code: "NOT_FOUND" });
     }),
 
-  wake: manageAgentsProcedure
+  wake: manageAgentByAgentIdProcedure
     .input(agentWakeInputSchema)
     .mutation(async ({ ctx, input }) => {
-      checkAgentBinding(ctx, input.id);
-      const agent = await ctx.agents.wake(input.id);
+      const agent = await ctx.agents.wake(input.agentId);
       if (!agent) throw new TRPCError({ code: "NOT_FOUND" });
       return toView(agent);
     }),
 
-  connectSlack: manageAgentsProcedure
+  connectSlack: manageAgentByAgentIdProcedure
     .input(agentConnectSlackInputSchema)
     .mutation(async ({ ctx, input }) => {
-      checkAgentBinding(ctx, input.id);
       if (!ctx.channels.available.slack)
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
           message: "Slack app token not configured",
         });
-      const res = await ctx.agents.connectSlack(input.id, input.slackChannelId);
+      const res = await ctx.agents.connectSlack(
+        input.agentId,
+        input.slackChannelId,
+      );
       if (res.ok) return toView(res.value);
       switch (res.error.type) {
         case "AgentNotFound":
@@ -137,34 +113,34 @@ export const agentsRouter = t.router({
       }
     }),
 
-  disconnectSlack: manageAgentsProcedure
+  disconnectSlack: manageAgentByAgentIdProcedure
     .input(agentDisconnectSlackInputSchema)
     .mutation(async ({ ctx, input }) => {
-      checkAgentBinding(ctx, input.id);
-      const agent = await ctx.agents.disconnectSlack(input.id);
+      const agent = await ctx.agents.disconnectSlack(input.agentId);
       if (!agent) throw new TRPCError({ code: "NOT_FOUND" });
       return toView(agent);
     }),
 
-  connectTelegram: manageAgentsProcedure
+  connectTelegram: manageAgentByAgentIdProcedure
     .input(agentConnectTelegramInputSchema)
     .mutation(async ({ ctx, input }) => {
-      checkAgentBinding(ctx, input.id);
       if (!ctx.channels.available.telegram)
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
           message: "Telegram channel not enabled",
         });
-      const agent = await ctx.agents.connectTelegram(input.id, input.botToken);
+      const agent = await ctx.agents.connectTelegram(
+        input.agentId,
+        input.botToken,
+      );
       if (!agent) throw new TRPCError({ code: "NOT_FOUND" });
       return toView(agent);
     }),
 
-  disconnectTelegram: manageAgentsProcedure
+  disconnectTelegram: manageAgentByAgentIdProcedure
     .input(agentDisconnectTelegramInputSchema)
     .mutation(async ({ ctx, input }) => {
-      checkAgentBinding(ctx, input.id);
-      const agent = await ctx.agents.disconnectTelegram(input.id);
+      const agent = await ctx.agents.disconnectTelegram(input.agentId);
       if (!agent) throw new TRPCError({ code: "NOT_FOUND" });
       return toView(agent);
     }),

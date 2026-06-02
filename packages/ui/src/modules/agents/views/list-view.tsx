@@ -141,7 +141,7 @@ export function ListView() {
                         <button
                           onClick={() => {
                             if (display.powerAction === "start")
-                              wakeAgent.mutate({ id: agent.id });
+                              wakeAgent.mutate({ agentId: agent.id });
                             else if (display.powerAction === "restart")
                               restartAgent(agent.id);
                           }}
@@ -192,11 +192,11 @@ export function ListView() {
                             );
                             if (!(await showConfirm(msg, "Delete Agent")))
                               return;
-                            deleteAgent.mutate({ id: agent.id });
+                            deleteAgent.mutate({ agentId: agent.id });
                           }}
                           disabled={
                             deleteAgent.isPending &&
-                            deleteAgent.variables?.id === agent.id
+                            deleteAgent.variables?.agentId === agent.id
                           }
                           className="btn-brutal h-8 w-8 rounded-lg border-2 border-border-light bg-surface flex items-center justify-center text-text-muted hover:text-danger hover:border-danger disabled:opacity-40 shadow-brutal-sm"
                           title="Delete agent"

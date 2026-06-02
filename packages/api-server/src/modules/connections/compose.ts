@@ -109,5 +109,7 @@ export function composeConnectionsForOwner(opts: {
     oauthFlow,
     oauthCallbackUrl: opts.oauthCallbackUrl,
     brandName: opts.brandName,
+    isAgentOwnedBy: (agentId, ownerSub) =>
+      opts.agentsRepo.isOwnedBy(agentId, ownerSub),
   });
 }

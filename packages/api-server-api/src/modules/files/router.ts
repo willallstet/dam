@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { t } from "../../trpc.js";
-import { checkAgentBinding, runProcedure } from "../../auth-procedures.js";
+import { runAgentByAgentIdProcedure } from "../../auth-procedures.js";
 
 const uploadInputSchema = z.object({
   agentId: z.string().min(1),
@@ -27,11 +27,8 @@ export const filesRouter = t.router({
   // pod-files write (incl. `dam import`) operates an agent in its current
   // configuration — agents:run, scoped to the principal's agent binding.
   // ADR-057 § Scope definitions.
-  upload: runProcedure
+  upload: runAgentByAgentIdProcedure
     .input(uploadInputSchema)
     .output(uploadOutputSchema)
-    .mutation(({ ctx, input }) => {
-      checkAgentBinding(ctx, input.agentId);
-      return ctx.files.upload(input);
-    }),
+    .mutation(({ ctx, input }) => ctx.files.upload(input)),
 });

@@ -707,6 +707,8 @@ export function startApiServerApp(deps: ApiServerAppDeps) {
       grants,
       connectionRules: createConnectionRulesSyncAdapter(db),
       ownerSub: user.sub,
+      isAgentOwnedBy: (agentId, ownerSub) =>
+        agentsRepo.isOwnedBy(agentId, ownerSub),
     });
     const connections = composeConnectionsForOwner({
       ownerId: user.sub,

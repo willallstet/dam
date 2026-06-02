@@ -31,6 +31,7 @@ export function createConnectionsService(deps: {
   oauthFlow: OAuthFlowService;
   oauthCallbackUrl: string;
   brandName: string;
+  isAgentOwnedBy(agentId: string, ownerSub: string): Promise<boolean>;
 }): ConnectionsService {
   function toView(conn: Connection): ConnectionView {
     const template = deps.templates.get(conn.templateId);
@@ -135,6 +136,9 @@ export function createConnectionsService(deps: {
     },
 
     async getAgentConnections(agentId: string): Promise<AgentConnections> {
+      if (!(await deps.isAgentOwnedBy(agentId, deps.ownerId))) {
+        return { agentId, connections: [] };
+      }
       const grants = await deps.repo.listAgentGrants(agentId);
       return {
         agentId,
@@ -149,6 +153,9 @@ export function createConnectionsService(deps: {
       agentId: string,
       connectionIds: string[],
     ): Promise<void> {
+      if (!(await deps.isAgentOwnedBy(agentId, deps.ownerId))) {
+        throw new Error("agent not found");
+      }
       const deduped = Array.from(new Set(connectionIds));
 
       const owned = await deps.repo.listByOwner(deps.ownerId);

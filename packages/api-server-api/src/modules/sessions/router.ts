@@ -1,5 +1,9 @@
 import { t } from "../../trpc.js";
-import { checkAgentBinding, runProcedure } from "../../auth-procedures.js";
+import {
+  checkAgentBinding,
+  runAgentByAgentIdProcedure,
+  runProcedure,
+} from "../../auth-procedures.js";
 import {
   sessionCreateInputSchema,
   sessionDeleteInputSchema,
@@ -11,37 +15,35 @@ import {
 } from "./schemas.js";
 
 export const sessionsRouter = t.router({
-  list: runProcedure.input(sessionListInputSchema).query(({ ctx, input }) => {
-    checkAgentBinding(ctx, input.agentId);
-    return ctx.sessions.list(input.agentId, input.includeChannel);
-  }),
+  list: runAgentByAgentIdProcedure
+    .input(sessionListInputSchema)
+    .query(({ ctx, input }) =>
+      ctx.sessions.list(input.agentId, input.includeChannel),
+    ),
 
-  create: runProcedure
+  create: runAgentByAgentIdProcedure
     .input(sessionCreateInputSchema)
-    .mutation(({ ctx, input }) => {
-      checkAgentBinding(ctx, input.agentId);
-      return ctx.sessions.create(
+    .mutation(({ ctx, input }) =>
+      ctx.sessions.create(
         input.sessionId,
         input.agentId,
         input.mode,
         input.type,
         input.scheduleId,
-      );
-    }),
+      ),
+    ),
 
-  setMode: runProcedure
+  setMode: runAgentByAgentIdProcedure
     .input(sessionSetModeInputSchema)
-    .mutation(({ ctx, input }) => {
-      checkAgentBinding(ctx, input.agentId);
-      return ctx.sessions.setMode(input.sessionId, input.agentId, input.mode);
-    }),
+    .mutation(({ ctx, input }) =>
+      ctx.sessions.setMode(input.sessionId, input.agentId, input.mode),
+    ),
 
-  delete: runProcedure
+  delete: runAgentByAgentIdProcedure
     .input(sessionDeleteInputSchema)
-    .mutation(({ ctx, input }) => {
-      checkAgentBinding(ctx, input.agentId);
-      return ctx.sessions.delete(input.sessionId, input.agentId);
-    }),
+    .mutation(({ ctx, input }) =>
+      ctx.sessions.delete(input.sessionId, input.agentId),
+    ),
 
   listByScheduleId: runProcedure
     .input(sessionListByScheduleIdInputSchema)
@@ -63,13 +65,12 @@ export const sessionsRouter = t.router({
       return ctx.sessions.resetByScheduleId(input.scheduleId);
     }),
 
-  resolveTerminal: runProcedure
+  resolveTerminal: runAgentByAgentIdProcedure
     .input(sessionResolveTerminalInputSchema)
-    .mutation(({ ctx, input }) => {
-      checkAgentBinding(ctx, input.agentId);
-      return ctx.sessions.resolveTerminal(input.agentId, input.strategy, {
+    .mutation(({ ctx, input }) =>
+      ctx.sessions.resolveTerminal(input.agentId, input.strategy, {
         reset: input.reset,
         force: input.force,
-      });
-    }),
+      }),
+    ),
 });

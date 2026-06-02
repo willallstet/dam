@@ -52,6 +52,14 @@ export function createEgressRulesService(
   deps: CreateEgressRulesServiceDeps,
 ): EgressRulesService {
   return {
+    async getById(id) {
+      const rule = await deps.repo.getById(id);
+      if (!rule || !(await deps.isAgentOwnedBy(rule.agentId, deps.ownerSub))) {
+        return null;
+      }
+      return toView(rule);
+    },
+
     async listForAgent(agentId) {
       if (!(await deps.isAgentOwnedBy(agentId, deps.ownerSub))) return [];
       const rows = await deps.repo.listForAgent(agentId);

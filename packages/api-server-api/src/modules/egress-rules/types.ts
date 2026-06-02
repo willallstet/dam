@@ -51,6 +51,8 @@ export type EgressRuleCreateInput = z.infer<typeof egressRuleCreateInputSchema>;
 export type EgressRuleUpdateInput = z.infer<typeof egressRuleUpdateInputSchema>;
 
 export interface EgressRulesService {
+  /** Null when the rule does not exist or is not owned by the principal. */
+  getById(id: string): Promise<EgressRuleView | null>;
   listForAgent(agentId: string): Promise<EgressRuleView[]>;
   /** Returns the agent's effective preset, derived from the `source` of its
    *  active egress rules: any `preset:all` row → "all"; any `preset:trusted`

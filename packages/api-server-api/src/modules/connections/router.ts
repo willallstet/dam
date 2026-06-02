@@ -1,7 +1,6 @@
 import { t } from "../../trpc.js";
 import {
-  checkAgentBinding,
-  manageAgentsProcedure,
+  manageAgentByAgentIdProcedure,
   manageConnectionsProcedure,
 } from "../../auth-procedures.js";
 import {
@@ -48,20 +47,15 @@ export const connectionsRouter = t.router({
 
   // Per-agent grant linkage lives under agents:manage (the agent is the
   // resource being configured, not the connection itself). ADR-057.
-  getAgentConnections: manageAgentsProcedure
+  getAgentConnections: manageAgentByAgentIdProcedure
     .input(connectionGetAgentConnectionsInputSchema)
-    .query(({ ctx, input }) => {
-      checkAgentBinding(ctx, input.agentId);
-      return ctx.connections.getAgentConnections(input.agentId);
-    }),
+    .query(({ ctx, input }) =>
+      ctx.connections.getAgentConnections(input.agentId),
+    ),
 
-  setAgentConnections: manageAgentsProcedure
+  setAgentConnections: manageAgentByAgentIdProcedure
     .input(connectionSetAgentConnectionsInputSchema)
-    .mutation(({ ctx, input }) => {
-      checkAgentBinding(ctx, input.agentId);
-      return ctx.connections.setAgentConnections(
-        input.agentId,
-        input.connectionIds,
-      );
-    }),
+    .mutation(({ ctx, input }) =>
+      ctx.connections.setAgentConnections(input.agentId, input.connectionIds),
+    ),
 });

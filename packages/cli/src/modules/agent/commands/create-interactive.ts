@@ -97,7 +97,7 @@ async function deleteCreated(
   const orphanSecrets: string[] = [];
   if (cleanup.agentId) {
     try {
-      await trpc.agents.delete.mutate({ id: cleanup.agentId });
+      await trpc.agents.delete.mutate({ agentId: cleanup.agentId });
     } catch {
       orphanAgent = cleanup.agentId;
     }

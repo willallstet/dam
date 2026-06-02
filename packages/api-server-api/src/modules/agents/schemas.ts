@@ -3,14 +3,14 @@ import { egressPresetSchema } from "../egress-rules/schemas.js";
 import { envVarSchema } from "../shared.js";
 import { mountSchema, resourcesSchema } from "../templates/schemas.js";
 
-const idSchema = z.object({ id: z.string().min(1) });
+const agentIdSchema = z.object({ agentId: z.string().min(1) });
 
-export const agentGetInputSchema = idSchema;
-export const agentDeleteInputSchema = idSchema;
-export const agentRestartInputSchema = idSchema;
-export const agentWakeInputSchema = idSchema;
-export const agentDisconnectSlackInputSchema = idSchema;
-export const agentDisconnectTelegramInputSchema = idSchema;
+export const agentGetInputSchema = agentIdSchema;
+export const agentDeleteInputSchema = agentIdSchema;
+export const agentRestartInputSchema = agentIdSchema;
+export const agentWakeInputSchema = agentIdSchema;
+export const agentDisconnectSlackInputSchema = agentIdSchema;
+export const agentDisconnectTelegramInputSchema = agentIdSchema;
 
 export const agentCreateInputSchema = z
   .object({
@@ -33,7 +33,7 @@ export const agentCreateInputSchema = z
   });
 
 export const agentUpdateInputSchema = z.object({
-  id: z.string().min(1),
+  agentId: z.string().min(1),
   name: z.string().min(1).max(255).optional(),
   description: z.string().optional(),
   env: z.array(envVarSchema).max(64).optional(),
@@ -42,12 +42,12 @@ export const agentUpdateInputSchema = z.object({
 });
 
 export const agentConnectSlackInputSchema = z.object({
-  id: z.string().min(1),
+  agentId: z.string().min(1),
   slackChannelId: z.string().min(1),
 });
 
 export const agentConnectTelegramInputSchema = z.object({
-  id: z.string().min(1),
+  agentId: z.string().min(1),
   botToken: z.string().min(1),
 });
 

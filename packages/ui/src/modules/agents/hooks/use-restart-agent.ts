@@ -19,7 +19,7 @@ export function useRestartAgent() {
   const restart = (id: string) => {
     setRestarting(id, { seenNonRunning: false, clickedAt: Date.now() });
     restartMutation.mutate(
-      { id },
+      { agentId: id },
       {
         onError: () => clearRestarting(id),
       },

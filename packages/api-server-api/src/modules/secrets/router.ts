@@ -1,7 +1,6 @@
 import { t } from "../../trpc.js";
 import {
-  checkAgentBinding,
-  manageAgentsProcedure,
+  manageAgentByAgentIdProcedure,
   manageConnectionsProcedure,
 } from "../../auth-procedures.js";
 import {
@@ -49,12 +48,9 @@ export const secretsRouter = t.router({
 
   // Per-agent grant linkage is configuration of the agent, not the credential —
   // agents:manage. ADR-057.
-  getAgentAccess: manageAgentsProcedure
+  getAgentAccess: manageAgentByAgentIdProcedure
     .input(secretGetAgentAccessInputSchema)
-    .query(({ ctx, input }) => {
-      checkAgentBinding(ctx, input.agentId);
-      return ctx.secrets.getAgentAccess(input.agentId);
-    }),
+    .query(({ ctx, input }) => ctx.secrets.getAgentAccess(input.agentId)),
 
   testAnthropic: manageConnectionsProcedure
     .input(secretTestAnthropicInputSchema)
@@ -84,12 +80,11 @@ export const secretsRouter = t.router({
       }
     }),
 
-  setAgentAccess: manageAgentsProcedure
+  setAgentAccess: manageAgentByAgentIdProcedure
     .input(secretSetAgentAccessInputSchema)
-    .mutation(({ ctx, input }) => {
-      checkAgentBinding(ctx, input.agentId);
-      return ctx.secrets.setAgentAccess(input.agentId, {
+    .mutation(({ ctx, input }) =>
+      ctx.secrets.setAgentAccess(input.agentId, {
         secretIds: input.secretIds,
-      });
-    }),
+      }),
+    ),
 });

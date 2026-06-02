@@ -100,7 +100,7 @@ export function useAcpSession(
   // Wake hibernated agent on entry.
   useEffect(() => {
     if (selectedAgent && agentRunState === "hibernated") {
-      api.agents.wake.mutate({ id: selectedAgent }).catch(() => {});
+      api.agents.wake.mutate({ agentId: selectedAgent }).catch(() => {});
     }
   }, [selectedAgent, agentRunState]);
 

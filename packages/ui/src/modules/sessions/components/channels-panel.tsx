@@ -89,39 +89,39 @@ function ChannelsForm({
     try {
       if (slackEnabled && !slackChannel && channelId.trim()) {
         await connectSlack.mutateAsync({
-          id: agent.id,
+          agentId: agent.id,
           slackChannelId: channelId.trim(),
         });
       } else if (!slackEnabled && slackChannel) {
-        await disconnectSlack.mutateAsync({ id: agent.id });
+        await disconnectSlack.mutateAsync({ agentId: agent.id });
       } else if (
         slackEnabled &&
         slackChannel &&
         slackChannel.type === "slack" &&
         channelId.trim() !== slackChannel.slackChannelId
       ) {
-        await disconnectSlack.mutateAsync({ id: agent.id });
+        await disconnectSlack.mutateAsync({ agentId: agent.id });
         await connectSlack.mutateAsync({
-          id: agent.id,
+          agentId: agent.id,
           slackChannelId: channelId.trim(),
         });
       }
       if (telegramEnabled && !telegramChannel && botToken.trim()) {
         await connectTelegram.mutateAsync({
-          id: agent.id,
+          agentId: agent.id,
           botToken: botToken.trim(),
         });
       } else if (!telegramEnabled && telegramChannel) {
-        await disconnectTelegram.mutateAsync({ id: agent.id });
+        await disconnectTelegram.mutateAsync({ agentId: agent.id });
       } else if (telegramEnabled && telegramChannel && botToken.trim()) {
-        await disconnectTelegram.mutateAsync({ id: agent.id });
+        await disconnectTelegram.mutateAsync({ agentId: agent.id });
         await connectTelegram.mutateAsync({
-          id: agent.id,
+          agentId: agent.id,
           botToken: botToken.trim(),
         });
       }
       await updateAgent.mutateAsync({
-        id: agent.id,
+        agentId: agent.id,
         allowedUserEmails: users,
       });
       setDirty(false);

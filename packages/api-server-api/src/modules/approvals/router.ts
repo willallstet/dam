@@ -1,5 +1,8 @@
 import { t } from "../../trpc.js";
-import { checkAgentBinding, runProcedure } from "../../auth-procedures.js";
+import {
+  runAgentByAgentIdProcedure,
+  runProcedure,
+} from "../../auth-procedures.js";
 import {
   approvalApproveHostInputSchema,
   approvalApproveOnceInputSchema,
@@ -15,15 +18,14 @@ export const approvalsRouter = t.router({
     .input(approvalListForOwnerInputSchema)
     .query(({ ctx, input }) => ctx.approvals.listForOwner(input)),
 
-  listForInstance: runProcedure
+  listForInstance: runAgentByAgentIdProcedure
     .input(approvalListForInstanceInputSchema)
-    .query(({ ctx, input }) => {
-      checkAgentBinding(ctx, input.agentId);
-      return ctx.approvals.listForInstance(input.agentId, {
+    .query(({ ctx, input }) =>
+      ctx.approvals.listForInstance(input.agentId, {
         limit: input.limit,
         status: input.status,
-      });
-    }),
+      }),
+    ),
 
   approveOnce: runProcedure
     .input(approvalApproveOnceInputSchema)
