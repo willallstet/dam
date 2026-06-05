@@ -1,6 +1,6 @@
 # Persistence
 
-Last verified: 2026-06-01
+Last verified: 2026-06-05
 
 ## Motivated by
 
@@ -8,7 +8,7 @@ Last verified: 2026-06-01
 - [ADR-006 — ConfigMaps over CRDs](../adrs/006-configmaps-over-crds.md) — domain resources are namespace-scoped ConfigMaps with a single-writer-per-key split
 - [ADR-055 — Agent-owned session metadata](../adrs/055-agent-owned-session-metadata.md) — sessions are owned by the agent and carried over ACP `_meta.platform`; Postgres holds no session state (supersedes [ADR-017](../adrs/017-db-backed-sessions.md))
 - [ADR-046 — Eliminate Instance, collapse into Agent](../adrs/046-eliminate-instance.md) — the merged `agent` ConfigMap is the sole resource per Agent and carries both `spec.yaml` and `status.yaml`
-- [ADR-058 — API keys with scopes for headless CLI use](../adrs/058-api-keys-headless-auth.md) — API keys are a Postgres-resident credential type; one row per key, hashed at rest
+- [ADR-061 — API keys with scopes for headless CLI use](../adrs/061-api-keys-headless-auth.md) — API keys are a Postgres-resident credential type; one row per key, hashed at rest
 - [ADR-8 — Usage tracking with pseudonymized identifiers](../adrs/048-usage-tracking.md) — append-only activity log + agent mirror table, with HMAC-pseudonymized `sub` values at the write boundary
 
 ## Overview
@@ -65,7 +65,7 @@ flowchart LR
 Postgres carries application state the api-server owns end-to-end — anything that has to be queryable when no agent pod is running, plus any domain resource the controller does not reconcile.
 
 - **channel routing** — bindings between external chat surfaces and the Agent/session they map to. Owned by [channels](channels.md).
-- **identity and auth** — links between channel-side identities and platform users, the auth allow-list, and API keys for headless CLI use ([ADR-058](../adrs/058-api-keys-headless-auth.md)). Owned by [security-and-credentials](security-and-credentials.md).
+- **identity and auth** — links between channel-side identities and platform users, the auth allow-list, and API keys for headless CLI use ([ADR-061](../adrs/061-api-keys-headless-auth.md)). Owned by [security-and-credentials](security-and-credentials.md).
 - **skills catalog** — connected sources, per-Agent install records, and publish history. Owned by [skills](skills.md).
 - **activity log + agent mirror** — append-only event log (`activity_events`), per-sub role flags (`actor_roles`), and the K8s↔Postgres agent ownership mirror (`agents`). Pseudonymized `actor_sub` and `owner_sub` columns at the write boundary. Owned by [usage-tracking](usage-tracking.md).
 

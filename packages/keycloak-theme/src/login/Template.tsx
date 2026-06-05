@@ -9,7 +9,10 @@ import { useApplyThemeScript } from "./hooks/use-apply-theme-script.js";
 import type { I18n } from "./i18n.js";
 import type { KcContext } from "./KcContext.js";
 
-const APP_NAME = import.meta.env.VITE_APP_NAME ?? "Dam";
+// Brand shown on the auth screens comes from the realm `displayName` at
+// runtime (Helm `brand.name`). This is only the fallback for when it's
+// absent — e.g. the local mocked-kcContext dev preview.
+const BRAND_FALLBACK = "Platform";
 
 export default function Template(props: TemplateProps<KcContext, I18n>) {
   const {
@@ -29,8 +32,9 @@ export default function Template(props: TemplateProps<KcContext, I18n>) {
 
   useEffect(() => {
     document.title =
-      documentTitle ?? msgStr("loginTitle", realm.displayName || realm.name);
-  }, [documentTitle, msgStr, realm.displayName, realm.name]);
+      documentTitle ??
+      msgStr("loginTitle", realm.displayName || BRAND_FALLBACK);
+  }, [documentTitle, msgStr, realm.displayName]);
 
   useSetClassName({ qualifiedName: "html", className: "" });
   useSetClassName({ qualifiedName: "body", className: "" });
@@ -96,4 +100,4 @@ export default function Template(props: TemplateProps<KcContext, I18n>) {
   );
 }
 
-export { APP_NAME };
+export { BRAND_FALLBACK };

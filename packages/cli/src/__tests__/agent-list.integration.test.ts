@@ -149,11 +149,11 @@ function makeAgent(overrides: Partial<Agent> = {}): Agent {
     name: "demo",
     templateId: "claude-code",
     spec: {
-      version: "1",
       name: overrides.name ?? "demo",
       image: "",
     },
     state: "running",
+    contributionFailures: [],
     channels: [],
     allowedUserEmails: [],
     ...overrides,

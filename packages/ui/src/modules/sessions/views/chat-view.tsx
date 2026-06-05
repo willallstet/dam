@@ -18,11 +18,13 @@ import { Markdown } from "../../../components/markdown.js";
 import { ResizeHandle } from "../../../components/resize-handle.js";
 import { StatusBadge } from "../../../components/status-indicator.js";
 import { isMobile } from "../../../lib/breakpoints.js";
+import { emitToast } from "../../../lib/toast.js";
 import { queryClient } from "../../../query-client.js";
 import type { SessionError } from "../../../store.js";
 import { useStore } from "../../../store.js";
 import type { AgentView } from "../../../types.js";
 import { useAgents } from "../../agents/api/queries.js";
+import { ContributionFailuresBadge } from "../../agents/components/contribution-failures-badge.js";
 import { FilesPanel } from "../../files/components/files-panel.js";
 import { useFileTree } from "../../files/hooks/use-file-tree.js";
 import { prefetchSchedules } from "../../schedules/api/queries.js";
@@ -208,7 +210,7 @@ export function ChatView() {
       } catch {
         setSessionMode(sessionMode);
         if (target === SessionMode.Terminal) setTerminalPaused(false);
-        useStore.getState().showToast({
+        emitToast({
           kind: "error",
           message: "Failed to switch session mode",
         });
@@ -637,7 +639,17 @@ function ChatHeaderStatus({
     );
   }
   const agent = agents.find((a) => a.id === selectedAgent);
-  return <StatusBadge size="sm" state={agent?.state ?? "starting"} />;
+  return (
+    <>
+      <StatusBadge size="sm" state={agent?.state ?? "starting"} />
+      {agent && (
+        <ContributionFailuresBadge
+          size="sm"
+          failures={agent.contributionFailures}
+        />
+      )}
+    </>
+  );
 }
 
 function SessionErrorCard({

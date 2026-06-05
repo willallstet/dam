@@ -37,7 +37,7 @@ func BuildForkAgentJob(
 	forkSpec *types.ForkSpec,
 	agentSpec *types.AgentSpec,
 	cfg *config.Config,
-	ownerCM *corev1.ConfigMap,
+	ownerRef metav1.OwnerReference,
 	credentialSecrets []corev1.Secret,
 	gatewayClusterIP string,
 ) *batchv1.Job {
@@ -99,9 +99,8 @@ func BuildForkAgentJob(
 		{Name: "HTTP_PROXY", Value: proxyAddr},
 		{Name: "https_proxy", Value: proxyAddr},
 		{Name: "http_proxy", Value: proxyAddr},
-		{Name: "SSL_CERT_FILE", Value: caCertPath},
+		// SSL_CERT_FILE / GIT_SSL_CAINFO left unset — see resources.go.
 		{Name: "NODE_EXTRA_CA_CERTS", Value: caCertPath},
-		{Name: "GIT_SSL_CAINFO", Value: caCertPath},
 		{Name: "NODE_USE_ENV_PROXY", Value: "1"},
 		{Name: "GIT_HTTP_PROXY_AUTHMETHOD", Value: "basic"},
 		{Name: "PLATFORM_AGENT_ID", Value: forkSpec.AgentName},
@@ -295,12 +294,10 @@ func BuildForkAgentJob(
 
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      forkName,
-			Namespace: cfg.Namespace,
-			Labels:    labels,
-			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(ownerCM, corev1.SchemeGroupVersion.WithKind("ConfigMap")),
-			},
+			Name:            forkName,
+			Namespace:       cfg.Namespace,
+			Labels:          labels,
+			OwnerReferences: []metav1.OwnerReference{ownerRef},
 		},
 		Spec: batchv1.JobSpec{
 			BackoffLimit:            &backoff,

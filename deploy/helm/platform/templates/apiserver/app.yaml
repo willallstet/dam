@@ -73,6 +73,12 @@ spec:
       app.kubernetes.io/instance: {{ .Release.Name }}
   template:
     metadata:
+      annotations:
+        # The api-server loads the mounted agent-templates once at boot (ADR-058),
+        # and K8s doesn't restart a pod when a mounted ConfigMap changes — so roll
+        # the pod when the rendered templates change, making `helm upgrade` of a
+        # template take effect instead of serving stale ones until the next restart.
+        checksum/agent-templates: {{ include (print $.Template.BasePath "/agent-templates.yaml") . | sha256sum }}
       labels:
         {{- include "platform.labels" . | nindent 8 }}
         app.kubernetes.io/component: apiserver
@@ -80,6 +86,17 @@ spec:
       {{- include "platform.imagePullSecrets" . | nindent 6 }}
       serviceAccountName: {{ include "platform.apiserver.serviceAccountName" . }}
       terminationGracePeriodSeconds: 45
+      # ndots:1 so external hostnames (e.g. an MCP server's domain during
+      # OAuth/DCR discovery in connections.create) resolve absolute-first.
+      # The default ndots:5 expands sub-5-dot FQDNs against node-inherited
+      # search domains first; a wildcard under one of those (seen with
+      # corporate VPN search domains leaking into the node's resolv.conf) then
+      # captures the lookup and discovery silently times out. dnsPolicy stays
+      # ClusterFirst — in-cluster service resolution is unaffected.
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "1"
       containers:
         - name: apiserver
           image: "{{ .Values.apiServer.image.repository }}:{{ .Values.apiServer.image.tag | default .Chart.AppVersion }}"
@@ -223,6 +240,16 @@ spec:
               value: {{ .appSlug | quote }}
             {{- end }}
             {{- end }}
+            {{- with .Values.apiServer.oauthAppDefaults.slack }}
+            {{- if .clientId }}
+            - name: PLATFORM_DEFAULT_SLACK_CLIENT_ID
+              value: {{ .clientId | quote }}
+            {{- end }}
+            {{- if .clientSecret }}
+            - name: PLATFORM_DEFAULT_SLACK_CLIENT_SECRET
+              value: {{ .clientSecret | quote }}
+            {{- end }}
+            {{- end }}
             - name: REDIS_URL
               value: {{ include "platform.redis.url" . | quote }}
             {{- if .Values.redis.enabled }}
@@ -240,12 +267,18 @@ spec:
             {{- end }}
             - name: TRUSTED_HOSTS_PATH
               value: /etc/platform/trusted-hosts
+            # ADR-058: agent templates are mounted from a ConfigMap and loaded
+            # once at boot — not read dynamically via the K8s API.
+            - name: AGENT_TEMPLATES_PATH
+              value: /etc/platform/agent-templates
             # Brand — drives UI title/theme, OAuth client_name, Slack
             # slash command, skill-publish git author + branch prefix.
             - name: BRAND_NAME
               value: {{ .Values.brand.name | quote }}
             - name: BRAND_SHORT
               value: {{ .Values.brand.short | quote }}
+            - name: BRAND_TAGLINE
+              value: {{ .Values.brand.tagline | quote }}
             - name: BRAND_THEME_LIGHT_ACCENT
               value: {{ .Values.brand.theme.light.accent | quote }}
             - name: BRAND_THEME_LIGHT_ACCENT_HOVER
@@ -271,6 +304,11 @@ spec:
               mountPath: /etc/platform/trusted-hosts
               subPath: trusted-hosts
               readOnly: true
+            # Whole-ConfigMap mount (no subPath): each `<id>.yaml` data key
+            # surfaces as a file the api-server loads at boot (ADR-058).
+            - name: agent-templates
+              mountPath: /etc/platform/agent-templates
+              readOnly: true
           {{- if .Values.probes.enabled }}
           readinessProbe:
             httpGet:
@@ -294,3 +332,6 @@ spec:
             items:
               - key: trusted-hosts
                 path: trusted-hosts
+        - name: agent-templates
+          configMap:
+            name: {{ include "platform.fullname" . }}-agent-templates

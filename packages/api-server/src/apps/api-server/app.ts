@@ -24,8 +24,10 @@ import {
   composeAgentsModule,
   createAgentsRepository,
   createKeycloakUserDirectory,
+  type ContributionsSettledPort,
 } from "../../modules/agents/index.js";
 import { composeTemplatesModule } from "../../modules/templates/index.js";
+import { createTemplatesRepository } from "../../modules/templates/infrastructure/templates-repository.js";
 import {
   composeSchedulesForOwner,
   type SchedulesBoot,
@@ -105,6 +107,7 @@ export interface ApiServerAppDeps {
   agentCleanupHooks: readonly AgentCleanupHook[];
   secretStores: SecretStoreRegistry;
   runtimeMutator: RuntimeMutator;
+  contributionsSettled: ContributionsSettledPort;
   schedulesBoot: SchedulesBoot;
   mountUsageRoutes: (
     app: Hono<{ Variables: { user: UserIdentity; roles: string[] } }>,
@@ -133,6 +136,7 @@ export function startApiServerApp(deps: ApiServerAppDeps) {
     agentCleanupHooks,
     secretStores,
     runtimeMutator,
+    contributionsSettled,
     schedulesBoot,
     terms,
     isTermsAccepted,
@@ -141,6 +145,9 @@ export function startApiServerApp(deps: ApiServerAppDeps) {
 
   const k8sClient = createK8sClient(api, config.namespace);
   const agentsRepo = createAgentsRepository(k8sClient);
+  // Templates are file-mounted config loaded once at boot (ADR-058); shared
+  // across requests rather than re-read from K8s on each tRPC call.
+  const templatesRepo = createTemplatesRepository(config.agentTemplatesPath);
 
   const connectionsBoot = composeConnectionsAtBoot({
     db,
@@ -171,6 +178,14 @@ export function startApiServerApp(deps: ApiServerAppDeps) {
           ? { appSlug: config.defaultGithubEnterpriseAppSlug }
           : {}),
       },
+      ...(config.defaultSlackClientId && config.defaultSlackClientSecret
+        ? {
+            slack: {
+              clientId: config.defaultSlackClientId,
+              clientSecret: config.defaultSlackClientSecret,
+            },
+          }
+        : {}),
     },
   });
   connectionsBoot.refreshLoop.start();
@@ -676,10 +691,8 @@ export function startApiServerApp(deps: ApiServerAppDeps) {
   app.all("/api/trpc/*", (c) => {
     const user = c.get("user");
 
-    const { templates, readSpec: readTemplateSpec } = composeTemplatesModule(
-      api,
-      config.namespace,
-    );
+    const { templates, readSpec: readTemplateSpec } =
+      composeTemplatesModule(templatesRepo);
     const { agents, isOwnedAgent } = composeAgentsModule({
       api,
       namespace: config.namespace,
@@ -691,6 +704,7 @@ export function startApiServerApp(deps: ApiServerAppDeps) {
       presetSeeder,
       cleanupHooks: agentCleanupHooks,
       runtimeMutator,
+      contributionsSettled,
     });
     const { schedules } = composeSchedulesForOwner({
       boot: schedulesBoot,
@@ -705,6 +719,7 @@ export function startApiServerApp(deps: ApiServerAppDeps) {
       seedSources,
       config.brand.name,
       runtimeMutator,
+      templatesRepo,
     );
     const grants = createAgentGrantsPort(k8sClient, user.sub);
     const secrets = createSecretsService({

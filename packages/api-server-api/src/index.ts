@@ -50,7 +50,7 @@ export {
   PROTECTED_AGENT_ENV_NAMES,
   isProtectedAgentEnvName,
 } from "./modules/agents/types.js";
-export { agentSpecSchema } from "./modules/agents/schemas.js";
+export type { AgentSpecCR, ForkSpecCR } from "./crd-types.gen.js";
 
 export {
   scheduleSpecSchema,
@@ -280,6 +280,10 @@ export {
   egressRuleUpdateInputSchema,
   ruleVerdictSchema,
 } from "./modules/egress-rules/schemas.js";
+export {
+  formatEgressRuleInline,
+  formatEgressRuleSource,
+} from "./modules/egress-rules/format.js";
 
 // ACP platform/* synthetic notifications
 export {
@@ -367,6 +371,7 @@ export {
   fileFormat,
   applyStateInput,
   applyStateResult,
+  driverFailure,
   stateSlice,
 } from "agent-runtime-api";
 export type {
@@ -379,5 +384,6 @@ export type {
   FileFormat,
   ApplyStateInput,
   ApplyStateResult,
+  DriverFailure,
   StateSlice,
 } from "agent-runtime-api";

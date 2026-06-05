@@ -10,6 +10,7 @@ import {
   timestamp,
   boolean,
   bigint,
+  integer,
 } from "drizzle-orm/pg-core";
 
 /** Outcome of a recorded activity. Constrained at the DB so a typo or a
@@ -42,7 +43,6 @@ export const identityLinks = pgTable(
     provider: text("provider").notNull(),
     externalUserId: text("external_user_id").notNull(),
     keycloakSub: text("keycloak_sub").notNull(),
-    refreshToken: text("refresh_token"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -366,17 +366,28 @@ export const runtimeStateOutbox = pgTable(
     })
       .defaultNow()
       .notNull(),
+    // Last version whose apply cycle settled (terminated), success or not — the readiness gate.
+    lastSettledVersion: bigint("last_settled_version", { mode: "number" })
+      .notNull()
+      .default(0),
+    // Last fully-clean version; advances only when every driver succeeded.
     lastAppliedVersion: bigint("last_applied_version", { mode: "number" })
       .notNull()
       .default(0),
     lastAppliedHash: text("last_applied_hash"),
     lastAppliedAt: timestamp("last_applied_at", { withTimezone: true }),
+    // Drivers that failed the last settle (DriverFailure[]); drives retry + the degraded badge.
+    applyFailures: jsonb("apply_failures")
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    // Failing-settle retry counter for the current version; capped by the sweep.
+    applyAttempts: integer("apply_attempts").notNull().default(0),
   },
   (table) => [
-    index("runtime_state_outbox_stale_idx")
-      .on(table.lastEnqueuedAt)
+    index("runtime_state_outbox_retry_idx")
+      .on(table.applyAttempts)
       .where(
-        sql`${table.lastAppliedAt} IS NULL OR ${table.lastEnqueuedAt} > ${table.lastAppliedAt}`,
+        sql`${table.applyFailures} <> '[]'::jsonb OR ${table.lastSettledVersion} < ${table.version}`,
       ),
   ],
 );

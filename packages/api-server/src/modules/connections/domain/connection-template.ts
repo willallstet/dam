@@ -4,6 +4,7 @@ import type {
   ConnectionTemplateInput,
   ConnectionTemplateView,
 } from "api-server-api";
+import { applyCallbackAlias } from "./oauth-callback-url.js";
 
 export type ConnectionTemplate =
   | OAuthConnectionTemplate
@@ -32,6 +33,9 @@ export interface OAuthConnectionTemplate extends TemplateCommon {
   tokenEndpointAcceptJson?: boolean;
   extraAuthParams?: Record<string, string>;
   dynamicRegistration?: boolean;
+  setupUrl?: string;
+  localhostCallbackAlias?: string;
+  credentialFamily?: string;
 }
 
 export interface HeaderConnectionTemplate extends TemplateCommon {
@@ -70,7 +74,36 @@ export function createConnectionTemplateRegistry(
   };
 }
 
-export function templateToView(t: ConnectionTemplate): ConnectionTemplateView {
+/** Client credentials a family sibling already registered, surfaced as an
+ *  overridable preset on the other family members. */
+export interface FamilyCredsPreset {
+  clientId: string;
+  hasSecret: boolean;
+}
+
+/** An OAuth template in a credential family with no operator-baked client id
+ *  of its own — it inherits credentials from a connected family sibling. */
+export function inheritsFamily(
+  t: ConnectionTemplate,
+): t is OAuthConnectionTemplate {
+  return t.authKind === "oauth" && !!t.credentialFamily && !t.clientId;
+}
+
+export function templateToView(
+  t: ConnectionTemplate,
+  oauthCallbackUrl: string,
+  familyPreset?: FamilyCredsPreset,
+): ConnectionTemplateView {
+  const showsCallbackUrl = t.authKind === "oauth" && !t.dynamicRegistration;
+  const alias = t.authKind === "oauth" ? t.localhostCallbackAlias : undefined;
+  const extras = {
+    ...t.extras,
+    ...(t.authKind === "oauth" && t.setupUrl ? { setupUrl: t.setupUrl } : {}),
+    ...(showsCallbackUrl
+      ? { callbackUrl: applyCallbackAlias(oauthCallbackUrl, alias) }
+      : {}),
+    ...(familyPreset ? { credentialsFromFamily: true } : {}),
+  };
   return {
     id: t.id,
     name: t.name,
@@ -79,12 +112,15 @@ export function templateToView(t: ConnectionTemplate): ConnectionTemplateView {
     ...(t.description ? { description: t.description } : {}),
     ...(t.iconSlug ? { iconSlug: t.iconSlug } : {}),
     authKind: t.authKind,
-    inputs: inputsFor(t),
-    ...(t.extras ? { extras: t.extras } : {}),
+    inputs: inputsFor(t, familyPreset),
+    ...(Object.keys(extras).length > 0 ? { extras } : {}),
   };
 }
 
-function inputsFor(t: ConnectionTemplate): ConnectionTemplateInput[] {
+function inputsFor(
+  t: ConnectionTemplate,
+  familyPreset?: FamilyCredsPreset,
+): ConnectionTemplateInput[] {
   const overridable = (
     name: string,
     presetValue?: string,
@@ -97,10 +133,13 @@ function inputsFor(t: ConnectionTemplate): ConnectionTemplateInput[] {
   });
   const required = (
     name: string,
-    opts: { secret?: boolean } = {},
+    opts: { secret?: boolean; presetValue?: string } = {},
   ): ConnectionTemplateInput => ({
     name,
     state: "required",
+    ...(opts.presetValue !== undefined && !opts.secret
+      ? { presetValue: opts.presetValue }
+      : {}),
     ...(opts.secret ? { secret: true } : {}),
   });
   const optional = (
@@ -123,11 +162,15 @@ function inputsFor(t: ConnectionTemplate): ConnectionTemplateInput[] {
       if (urlsHavePlaceholder) {
         out.push(t.host ? overridable("host", t.host) : required("host"));
       }
+      // A family sibling's creds (familyPreset) stand in when this template
+      // has no operator-baked client id, surfacing both as overridable.
+      const clientId = t.clientId ?? familyPreset?.clientId;
       out.push(
-        t.clientId ? overridable("clientId", t.clientId) : required("clientId"),
+        clientId ? overridable("clientId", clientId) : required("clientId"),
       );
+      const hasSecret = !!t.clientSecret || (familyPreset?.hasSecret ?? false);
       out.push(
-        t.clientSecret
+        hasSecret
           ? overridable("clientSecret", undefined, { secret: true })
           : required("clientSecret", { secret: true }),
       );
@@ -144,18 +187,29 @@ function inputsFor(t: ConnectionTemplate): ConnectionTemplateInput[] {
     }
     case "header": {
       const out: ConnectionTemplateInput[] = [];
-      out.push(t.host ? overridable("host", t.host) : required("host"));
-      out.push(
-        t.headerName
-          ? overridable("headerName", t.headerName)
-          : required("headerName"),
-      );
-      out.push(
-        t.valueFormat
-          ? overridable("valueFormat", t.valueFormat)
-          : required("valueFormat"),
-      );
+      if (t.isCustom) {
+        // Custom credential: visible pre-filled inputs, not the operator
+        // "Customize defaults" accordion.
+        out.push(required("host", { presetValue: t.host }));
+        out.push(required("headerName", { presetValue: t.headerName }));
+        out.push(required("valueFormat", { presetValue: t.valueFormat }));
+      } else {
+        out.push(t.host ? overridable("host", t.host) : required("host"));
+        out.push(
+          t.headerName
+            ? overridable("headerName", t.headerName)
+            : required("headerName"),
+        );
+        out.push(
+          t.valueFormat
+            ? overridable("valueFormat", t.valueFormat)
+            : required("valueFormat"),
+        );
+      }
       out.push(required("value", { secret: true }));
+      // Custom credential can also be exposed to the agent as an env var
+      // (placeholder in-pod; Envoy injects the real value on egress).
+      if (t.isCustom) out.push(optional("envName"));
       return out;
     }
     case "none":

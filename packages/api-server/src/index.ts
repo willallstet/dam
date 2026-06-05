@@ -1,9 +1,8 @@
 import { createDb, runMigrations } from "db";
 import { createApi } from "./modules/agents/infrastructure/k8s.js";
 import {
-  LABEL_TYPE,
+  AGENTS_PLURAL,
   LABEL_OWNER,
-  TYPE_AGENT,
 } from "./modules/agents/infrastructure/labels.js";
 import {
   composeAgentsModule,
@@ -94,12 +93,41 @@ import { podBaseUrl } from "./modules/agents/infrastructure/k8s.js";
 const config = loadConfig();
 configureLogger({ level: config.logLevel });
 
-const { api } = createApi(config.namespace);
+const { api, customObjects } = createApi(config.namespace);
 await runMigrations(config.databaseUrl, config.migrationsPath);
 const { db, sql } = createDb(config.databaseUrl);
 
+if (!config.redisUrl)
+  throw new Error(
+    "REDIS_URL is required (Redis is a platform primitive — see ADR-036)",
+  );
+const bullConnection = createBullConnection(
+  config.redisUrl,
+  config.redisPassword ?? undefined,
+);
+const redisBus = createRedisBus(config.redisUrl, {
+  password: config.redisPassword ?? undefined,
+});
+
 const k8sClient = createK8sClient(api, config.namespace);
 const agentsRepo = createAgentsRepository(k8sClient);
+
+const runtimeDelivery = composeRuntimeDelivery({
+  db,
+  namespace: config.namespace,
+  bullConnection,
+  // The apply worker only dispatches to a ready agent (the controller's CRD
+  // Ready condition); otherwise it defers and the sweep retries once it's live.
+  agentRunningPort: {
+    isRunning: (agentId) => agentsRepo.isReady(agentId),
+  },
+  harnessServerUrl: config.harnessServerUrl,
+});
+runtimeDelivery.sweep.start();
+const contributionsSettledPort = {
+  status: runtimeDelivery.contributionsStatus,
+  statusMany: runtimeDelivery.contributionsStatusMany,
+};
 const channelSecretStore = createChannelSecretStore(k8sClient);
 const subPseudonymizer = createSubPseudonymizer(config.activityHmacKey);
 
@@ -128,7 +156,10 @@ const skillsCleanupSub = startSkillsCleanupSaga((agentId) =>
 const seedSources = parseSeedSources(config.skillSourcesSeed);
 
 const { forks } = composeForksModule({
-  orchestrator: createK8sForkOrchestrator({ api, namespace: config.namespace }),
+  orchestrator: createK8sForkOrchestrator({
+    customObjects,
+    namespace: config.namespace,
+  }),
 });
 
 const onForeignReplySub = startOnForeignReplySaga(forks);
@@ -139,12 +170,12 @@ const usage = composeUsageModule({
   activityTrackingEnabled: config.activityTrackingEnabled,
   inspectorRole: config.keycloakInspectorRole ?? "",
   listK8sAgents: async () => {
-    const cms = await k8sClient.listConfigMaps(`${LABEL_TYPE}=${TYPE_AGENT}`);
-    return cms
-      .filter((cm) => cm.metadata?.name && cm.metadata?.labels?.[LABEL_OWNER])
-      .map((cm) => ({
-        id: cm.metadata!.name!,
-        owner: cm.metadata!.labels![LABEL_OWNER]!,
+    const agents = await k8sClient.listCustomObjects(AGENTS_PLURAL);
+    return agents
+      .filter((a) => a.metadata?.name && a.metadata?.labels?.[LABEL_OWNER])
+      .map((a) => ({
+        id: a.metadata!.name!,
+        owner: a.metadata!.labels![LABEL_OWNER]!,
       }));
   },
 });
@@ -163,29 +194,6 @@ const userDirectory = createKeycloakUserDirectory({
   clientSecret: config.keycloakApiClientSecret,
 });
 
-if (!config.redisUrl)
-  throw new Error(
-    "REDIS_URL is required (Redis is a platform primitive — see ADR-036)",
-  );
-const redisBus = createRedisBus(config.redisUrl, {
-  password: config.redisPassword ?? undefined,
-});
-
-const bullConnection = createBullConnection(
-  config.redisUrl,
-  config.redisPassword ?? undefined,
-);
-
-// Composed before the system-agents reader so runtimeMutator is a required agents dep (#421).
-const runtimeDelivery = composeRuntimeDelivery({
-  db,
-  namespace: config.namespace,
-  bullConnection,
-  agentRunningPort: { isRunning: () => true },
-  harnessServerUrl: config.harnessServerUrl,
-});
-runtimeDelivery.sweep.start();
-
 const { agents: systemAgents } = composeAgentsModule({
   api,
   namespace: config.namespace,
@@ -195,11 +203,8 @@ const { agents: systemAgents } = composeAgentsModule({
   channelSecretStore,
   readTemplateSpec: async () => null,
   runtimeMutator: runtimeDelivery.runtimeMutator,
+  contributionsSettled: contributionsSettledPort,
 });
-if (!config.redisUrl)
-  throw new Error(
-    "REDIS_URL is required (Redis is a platform primitive — see ADR-036)",
-  );
 
 const identityLinkService = createIdentityLinkService({
   findByExternalUser: findIdentityByExternalUser(db),
@@ -385,6 +390,7 @@ const { server: apiServer } = startApiServerApp({
   agentCleanupHooks,
   secretStores,
   runtimeMutator: runtimeDelivery.runtimeMutator,
+  contributionsSettled: contributionsSettledPort,
   schedulesBoot,
   mountUsageRoutes: usage.mount,
   terms: termsService,

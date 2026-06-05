@@ -153,7 +153,21 @@
       "idx": 21,
       "version": "7",
       "when": 1780790400000,
-      "tag": "0021_api_keys",
+      "tag": "0021_drop_identity_link_refresh_token",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1780876800000,
+      "tag": "0022_outbox_settled_gate",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1780963200000,
+      "tag": "0023_api_keys",
       "breakpoints": true
     }
   ]

@@ -23,6 +23,7 @@ export interface OperatorCredentials {
   githubEnterprise?: GitHubEnterpriseCredentials;
   google?: OAuthClientCredentials;
   spotify?: OAuthClientCredentials;
+  slack?: OAuthClientCredentials;
 }
 
 const ANTHROPIC: HeaderConnectionTemplate = {
@@ -141,6 +142,7 @@ function github(creds?: OAuthClientCredentials): OAuthConnectionTemplate {
     description: "Read + write GitHub repos, issues, PRs.",
     iconSlug: "github",
     authKind: "oauth",
+    setupUrl: "https://github.com/settings/developers",
     ...(creds?.clientId ? { clientId: creds.clientId } : {}),
     ...(creds?.clientSecret ? { clientSecret: creds.clientSecret } : {}),
     ...(creds?.appSlug ? { extras: { appSlug: creds.appSlug } } : {}),
@@ -208,18 +210,109 @@ function spotify(creds?: OAuthClientCredentials): OAuthConnectionTemplate {
     description: "Read library + control playback on your behalf.",
     iconSlug: "spotify",
     authKind: "oauth",
+    setupUrl: "https://developer.spotify.com/dashboard",
+    localhostCallbackAlias: "127.0.0.1",
     ...(creds?.clientId ? { clientId: creds.clientId } : {}),
     ...(creds?.clientSecret ? { clientSecret: creds.clientSecret } : {}),
     authorizationUrl: "https://accounts.spotify.com/authorize",
     tokenUrl: "https://accounts.spotify.com/api/token",
     scopes: [
-      "user-read-email",
       "user-read-private",
+      "user-read-email",
+      "playlist-read-private",
+      "playlist-read-collaborative",
+      "playlist-modify-private",
+      "playlist-modify-public",
       "user-library-read",
-      "user-modify-playback-state",
+      "user-library-modify",
+      "user-top-read",
+      "user-read-recently-played",
       "user-read-playback-state",
+      "user-modify-playback-state",
+      "user-read-currently-playing",
     ],
-    contributions: [{ kind: "egress-allow", host: "api.spotify.com" }],
+    contributions: [
+      {
+        kind: "egress-inject",
+        host: "api.spotify.com",
+        headerName: "Authorization",
+        valueFormat: "Bearer {value}",
+      },
+    ],
+  };
+}
+
+// User-token scopes advertised by Slack's MCP server
+// (https://mcp.slack.com/.well-known/oauth-authorization-server). Requesting
+// the full set lets the agent use every Slack MCP tool — search, channel and
+// thread history, posting, reactions, canvases, files, and user lookups.
+const SLACK_SCOPES = [
+  "search:read.public",
+  "search:read.private",
+  "search:read.mpim",
+  "search:read.im",
+  "search:read.files",
+  "search:read.users",
+  "channels:history",
+  "groups:history",
+  "mpim:history",
+  "im:history",
+  "channels:read",
+  "groups:read",
+  "mpim:read",
+  "channels:write",
+  "groups:write",
+  "im:write",
+  "mpim:write",
+  "chat:write",
+  "reactions:read",
+  "reactions:write",
+  "canvases:read",
+  "canvases:write",
+  "files:read",
+  "emoji:read",
+  "users:read",
+  "users:read.email",
+];
+
+function slack(creds?: OAuthClientCredentials): OAuthConnectionTemplate {
+  return {
+    id: "slack",
+    name: "Slack",
+    category: "app",
+    isCustom: false,
+    description:
+      "Search, read, and post in Slack on your behalf — backed by Slack's MCP server.",
+    iconSlug: "slack",
+    authKind: "oauth",
+    setupUrl: "https://api.slack.com/apps",
+    ...(creds?.clientId ? { clientId: creds.clientId } : {}),
+    ...(creds?.clientSecret ? { clientSecret: creds.clientSecret } : {}),
+    // Slack's MCP OAuth is a standards-compliant AS (PKCE/S256, confidential
+    // client via client_secret_post) but offers no dynamic client registration,
+    // so the app is registered out of band and connects through the static
+    // OAuth path with these fixed endpoints.
+    authorizationUrl: "https://slack.com/oauth/v2_user/authorize",
+    tokenUrl: "https://slack.com/api/oauth.v2.user.access",
+    scopes: SLACK_SCOPES,
+    contributions: [
+      // The agent reaches Slack through its hosted MCP server, not a bearer in
+      // the pod: the mcp-entry writes a placeholder Authorization header into
+      // the harness MCP config and Envoy swaps in the real user token on egress
+      // to mcp.slack.com (same swap the OAuth-DCR MCP path relies on).
+      {
+        kind: "egress-inject",
+        host: "mcp.slack.com",
+        headerName: "Authorization",
+        valueFormat: "Bearer {value}",
+      },
+      {
+        kind: "mcp-entry",
+        name: "slack",
+        url: "https://mcp.slack.com/mcp",
+        headers: { Authorization: "Bearer dummy-placeholder" },
+      },
+    ],
   };
 }
 
@@ -229,6 +322,7 @@ interface GoogleServiceDef {
   description: string;
   scopes: string[];
   hosts: { host: string; pathPattern?: string }[];
+  iconSlug?: string;
 }
 
 const GOOGLE_BASELINE_SCOPES = ["openid", "email", "profile"];
@@ -237,6 +331,7 @@ const GOOGLE_SERVICES: GoogleServiceDef[] = [
   {
     id: "google-gmail",
     name: "Gmail",
+    iconSlug: "gmail",
     description: "Read, compose, and send emails via Gmail.",
     scopes: [
       "https://www.googleapis.com/auth/gmail.readonly",
@@ -308,6 +403,18 @@ const GOOGLE_SERVICES: GoogleServiceDef[] = [
     description: "Read, create, and edit forms and responses.",
     scopes: ["https://www.googleapis.com/auth/forms.body"],
     hosts: [{ host: "forms.googleapis.com" }],
+  },
+  {
+    id: "google-health",
+    name: "Google Health",
+    description:
+      "Access activity, sleep, and health metrics from Fitbit and connected devices.",
+    scopes: [
+      "https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly",
+      "https://www.googleapis.com/auth/googlehealth.sleep.readonly",
+      "https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly",
+    ],
+    hosts: [{ host: "health.googleapis.com" }],
   },
   {
     id: "google-meet",
@@ -383,19 +490,43 @@ function googleService(
     category: "app",
     isCustom: false,
     description: def.description,
-    iconSlug: def.id,
+    iconSlug: def.iconSlug ?? def.id,
     authKind: "oauth",
+    credentialFamily: "google",
+    setupUrl: "https://console.cloud.google.com/apis/credentials",
     ...(creds?.clientId ? { clientId: creds.clientId } : {}),
     ...(creds?.clientSecret ? { clientSecret: creds.clientSecret } : {}),
     authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
     tokenUrl: "https://oauth2.googleapis.com/token",
     scopes: [...GOOGLE_BASELINE_SCOPES, ...def.scopes],
     extraAuthParams: { access_type: "offline", prompt: "consent" },
-    contributions: def.hosts.map((h) => ({
-      kind: "egress-allow",
-      host: h.host,
-      ...(h.pathPattern ? { pathPattern: h.pathPattern } : {}),
-    })),
+    contributions: [
+      // The Google Workspace CLI (`gws`, baked into platform-base) reads this
+      // env var as its OAuth access token. Granting any Google connection
+      // stamps the sentinel here; the egress-inject contribution below then
+      // has Envoy swap it for the real Bearer token on *.googleapis.com calls
+      // (ADR-033). Same name across all Google services — first-granted-wins.
+      {
+        kind: "env",
+        name: "GOOGLE_WORKSPACE_CLI_TOKEN",
+        placeholder: "dummy-placeholder",
+      },
+      ...def.hosts.map((h) => ({
+        kind: "egress-inject" as const,
+        host: h.host,
+        ...(h.pathPattern ? { pathPattern: h.pathPattern } : {}),
+        headerName: "Authorization",
+        valueFormat: "Bearer {value}",
+      })),
+      // Google clients fetch the public discovery doc at startup (e.g.
+      // /discovery/v1/apis/gmail/v1/rest), outside each service's host scope.
+      // Public + read-only, so allow without credential injection.
+      {
+        kind: "egress-allow" as const,
+        host: "www.googleapis.com",
+        pathPattern: "/discovery/v1/apis/*",
+      },
+    ],
   };
 }
 
@@ -408,6 +539,8 @@ const CUSTOM_HEADER: HeaderConnectionTemplate = {
     "Inject a header (API key, PAT, bearer) on outbound calls to a host.",
   iconSlug: "key",
   authKind: "header",
+  headerName: "Authorization",
+  valueFormat: "Bearer {value}",
   contributions: [],
 };
 
@@ -446,6 +579,7 @@ export function buildCatalog(
     github(creds.github),
     githubEnterprise(creds.githubEnterprise),
     spotify(creds.spotify),
+    slack(creds.slack),
     ...GOOGLE_SERVICES.map((def) => googleService(def, creds.google)),
     CUSTOM_HEADER,
     CUSTOM_MCP_OAUTH,

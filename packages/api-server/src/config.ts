@@ -92,6 +92,8 @@ const configSchema = z.object({
   defaultGithubEnterpriseClientId: z.string().nullable().default(null),
   defaultGithubEnterpriseClientSecret: z.string().nullable().default(null),
   defaultGithubEnterpriseAppSlug: adminAppSlugSchema,
+  defaultSlackClientId: z.string().nullable().default(null),
+  defaultSlackClientSecret: z.string().nullable().default(null),
   redisUrl: z.string().nullable().default(null),
   /** Optional Redis AUTH password. The chart provisions a generated
    *  per-release password and binds it via secretKeyRef; standalone dev
@@ -108,6 +110,11 @@ const configSchema = z.object({
    *  preset (ADR-035). Mounted from a Helm-managed ConfigMap.
    *  Empty/missing file → preset is empty (still selectable, just seeds nothing). */
   trustedHostsPath: z.string().default(""),
+  /** Directory of chart-shipped agent templates, mounted from a Helm-managed
+   *  ConfigMap (ADR-058). One `<id>.yaml` per template. The api-server loads
+   *  them once at boot — templates are declarative config that only changes on
+   *  a helm upgrade, which restarts the pod. Empty/missing → no templates. */
+  agentTemplatesPath: z.string().default(""),
   /** Hard ceiling for file-import bundle uploads, in bytes. Enforced at the
    *  api-server proxy boundary before any byte reaches agent-runtime, so a
    *  misbehaving client can't fill the PVC. Default 5 GiB — generous enough
@@ -181,15 +188,19 @@ export function loadConfig(): Config {
     defaultGithubEnterpriseClientSecret:
       process.env.PLATFORM_DEFAULT_GHE_CLIENT_SECRET,
     defaultGithubEnterpriseAppSlug: process.env.PLATFORM_DEFAULT_GHE_APP_SLUG,
+    defaultSlackClientId: process.env.PLATFORM_DEFAULT_SLACK_CLIENT_ID,
+    defaultSlackClientSecret: process.env.PLATFORM_DEFAULT_SLACK_CLIENT_SECRET,
     redisUrl: process.env.REDIS_URL,
     redisPassword: process.env.REDIS_PASSWORD,
     approvalHoldSeconds: process.env.APPROVAL_HOLD_SECONDS,
     minClientCliVersion: process.env.MIN_CLIENT_CLI_VERSION,
     trustedHostsPath: process.env.TRUSTED_HOSTS_PATH,
+    agentTemplatesPath: process.env.AGENT_TEMPLATES_PATH,
     maxImportBundleBytes: process.env.MAX_IMPORT_BUNDLE_BYTES,
     brand: {
       name: process.env.BRAND_NAME ?? "Platform",
       short: process.env.BRAND_SHORT ?? "platform",
+      tagline: process.env.BRAND_TAGLINE ?? "",
       theme: {
         light: {
           accent: process.env.BRAND_THEME_LIGHT_ACCENT ?? "#1D6BE1",

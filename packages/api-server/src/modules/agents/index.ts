@@ -2,6 +2,7 @@ export { composeAgentsModule } from "./compose.js";
 export type {
   AgentCleanupHook,
   PresetSeeder,
+  ContributionsSettledPort,
 } from "./services/agents-service.js";
 export {
   createAgentsRepository,
@@ -13,7 +14,7 @@ export {
 } from "./infrastructure/keycloak-user-directory.js";
 export { startK8sCleanupSaga } from "./sagas/k8s-cleanup.js";
 export { startChannelCleanupSaga } from "./sagas/channel-cleanup.js";
-export type { InfraAgent } from "./infrastructure/agents-configmap-mappers.js";
+export type { InfraAgent } from "./infrastructure/agent-mappers.js";
 export {
   deleteChannelsByAgent,
   listChannelsByOwner,

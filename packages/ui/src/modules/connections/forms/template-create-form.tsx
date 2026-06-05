@@ -4,6 +4,7 @@ import {
   type ConnectionTemplateInput,
   type ConnectionTemplateView,
 } from "api-server-api";
+import { Check, Copy, ExternalLink } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -31,7 +32,14 @@ export function TemplateCreateForm({
   const create = useCreateConnection();
 
   const [name, setName] = useState(() => slugifyTemplateName(template.name));
-  const [fields, setFields] = useState<Record<string, string>>({});
+  const [fields, setFields] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = {};
+    for (const i of template.inputs) {
+      if (i.presetValue !== undefined && !i.secret)
+        init[i.name] = i.presetValue;
+    }
+    return init;
+  });
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
   const [authorizing, setAuthorizing] = useState(false);
@@ -44,6 +52,18 @@ export function TemplateCreateForm({
     for (const i of template.inputs) map.set(i.name, i);
     return map;
   }, [template.inputs]);
+
+  const bringYourOwnApp =
+    needsOAuth && inputsByName.get("clientId")?.state === "required";
+
+  const extraStr = (k: string): string | undefined => {
+    const v = template.extras?.[k];
+    return typeof v === "string" ? v : undefined;
+  };
+
+  // Overridable client creds can come from an operator preset or be reused
+  // from a sibling connection in the same credential family — the copy differs.
+  const credentialsFromFamily = template.extras?.credentialsFromFamily === true;
 
   const f = (k: string): string => fields[k] ?? "";
   const setF = (k: string, v: string) =>
@@ -96,6 +116,9 @@ export function TemplateCreateForm({
             : {}),
           ...(submittedValue("valueFormat")
             ? { valueFormat: submittedValue("valueFormat")! }
+            : {}),
+          ...(submittedValue("envName")
+            ? { envName: submittedValue("envName")! }
             : {}),
           value,
         };
@@ -160,11 +183,19 @@ export function TemplateCreateForm({
         <div className="flex flex-col gap-4">
           <LabeledInput
             label="Name"
+            testId="connection-field-name"
             placeholder="my-connection"
             value={name}
             onChange={setName}
             help="Lowercase letters, digits, and single hyphens (e.g. my-mcp-server). Doubles as the MCP slug."
           />
+
+          {bringYourOwnApp && (
+            <OAuthAppHint
+              callbackUrl={extraStr("callbackUrl")}
+              setupUrl={extraStr("setupUrl")}
+            />
+          )}
 
           {requiredOrOptional.map((input) => (
             <LabeledInput
@@ -173,6 +204,7 @@ export function TemplateCreateForm({
                 labelFor(input.name) +
                 (input.state === "optional" ? " (optional)" : "")
               }
+              testId={`connection-field-${input.name}`}
               placeholder={placeholderFor(input.name)}
               type={input.secret ? "password" : "text"}
               value={f(input.name)}
@@ -185,6 +217,7 @@ export function TemplateCreateForm({
               inputs={overridable}
               fields={fields}
               overrides={overrides}
+              fromFamily={credentialsFromFamily}
               setF={setF}
               setOverride={(k, v) =>
                 setOverrides((prev) => ({ ...prev, [k]: v }))
@@ -209,7 +242,11 @@ export function TemplateCreateForm({
         <Button variant="outline" onClick={onCancel} disabled={pending}>
           Cancel
         </Button>
-        <Button onClick={submit} disabled={pending}>
+        <Button
+          onClick={submit}
+          disabled={pending}
+          data-testid="connection-create-submit"
+        >
           {authorizing
             ? "Redirecting…"
             : pending
@@ -223,16 +260,82 @@ export function TemplateCreateForm({
   );
 }
 
+function OAuthAppHint({
+  callbackUrl,
+  setupUrl,
+}: {
+  callbackUrl?: string;
+  setupUrl?: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  if (!callbackUrl && !setupUrl) return null;
+
+  const copy = () => {
+    if (!callbackUrl) return;
+    navigator.clipboard.writeText(callbackUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="rounded-lg border border-border bg-muted/40 p-3 flex flex-col gap-2">
+      <p className="text-[12px] text-foreground/80">
+        Register an OAuth app at the provider, then paste its client credentials
+        below.
+        {setupUrl && (
+          <>
+            {" "}
+            <a
+              href={setupUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 font-semibold text-primary hover:underline"
+            >
+              Create an app <ExternalLink size={11} />
+            </a>
+          </>
+        )}
+      </p>
+      {callbackUrl && (
+        <div>
+          <span className="text-[11px] text-muted-foreground block mb-1">
+            Add this exact redirect URI to your app:
+          </span>
+          <div className="flex items-center gap-1.5">
+            <code className="text-[11px] font-mono text-foreground/90 break-all">
+              {callbackUrl}
+            </code>
+            <button
+              type="button"
+              onClick={copy}
+              className="h-5 w-5 shrink-0 rounded inline-flex items-center justify-center text-muted-foreground hover:text-primary"
+              title="Copy redirect URI"
+            >
+              {copied ? (
+                <Check size={12} className="text-success" />
+              ) : (
+                <Copy size={12} />
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function OverridableSection({
   inputs,
   fields,
   overrides,
+  fromFamily,
   setF,
   setOverride,
 }: {
   inputs: ConnectionTemplateInput[];
   fields: Record<string, string>;
   overrides: Record<string, boolean>;
+  fromFamily?: boolean;
   setF: (k: string, v: string) => void;
   setOverride: (k: string, v: boolean) => void;
 }) {
@@ -247,8 +350,9 @@ function OverridableSection({
         {expanded ? "▼" : "▶"} Customize defaults ({inputs.length})
       </button>
       <p className="text-[11px] text-muted-foreground mt-1">
-        These values are pre-configured by your administrator. Leave as-is to
-        use the defaults.
+        {fromFamily
+          ? "Reused from another connection you've already set up. Leave as-is to share the same app, or override to use a different one."
+          : "These values are pre-configured by your administrator. Leave as-is to use the defaults."}
       </p>
       {expanded && (
         <div className="mt-3 flex flex-col gap-3">
@@ -294,6 +398,7 @@ function OverridableSection({
 
 function LabeledInput({
   label,
+  testId,
   placeholder,
   type,
   value,
@@ -301,6 +406,7 @@ function LabeledInput({
   help,
 }: {
   label: string;
+  testId?: string;
   placeholder?: string;
   type?: "text" | "password";
   value: string;
@@ -314,6 +420,7 @@ function LabeledInput({
       </span>
       <Input
         type={type ?? "text"}
+        data-testid={testId}
         placeholder={placeholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -351,6 +458,7 @@ const FIELD_LABELS: Record<string, string> = {
   clientId: "Client ID",
   clientSecret: "Client secret",
   appSlug: "GitHub App slug",
+  envName: "Environment variable",
 };
 
 const FIELD_PLACEHOLDERS: Record<string, string> = {
@@ -362,6 +470,7 @@ const FIELD_PLACEHOLDERS: Record<string, string> = {
   clientId: "Iv1.…",
   clientSecret: "•••••",
   appSlug: "my-platform-app",
+  envName: "MY_API_KEY",
 };
 
 function labelFor(key: string): string {

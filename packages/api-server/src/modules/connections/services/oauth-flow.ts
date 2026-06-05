@@ -10,6 +10,7 @@ import type {
 import type { ConnectionsRepository } from "../infrastructure/connections-repository.js";
 import type { ConnectionTemplateRegistry } from "../domain/connection-template.js";
 import { buildConnectionSdsFields } from "../domain/connection-sds.js";
+import { applyCallbackAlias } from "../domain/oauth-callback-url.js";
 import type { SecretStore } from "../../secret-store/index.js";
 import { emit, EventType } from "../../../events.js";
 import { securityLog } from "../../../core/security-log.js";
@@ -47,9 +48,14 @@ export function createOAuthFlowService(deps: {
         );
       }
       const provider = await buildProvider(conn, conn.auth, deps);
+      const template = deps.templates.get(conn.templateId);
+      const alias =
+        template?.authKind === "oauth"
+          ? template.localhostCallbackAlias
+          : undefined;
       const { authUrl } = deps.engine.start<OAuthFlowPendingCtx>({
         provider,
-        redirectUri: deps.callbackUrl,
+        redirectUri: applyCallbackAlias(deps.callbackUrl, alias),
         ctx: {
           connectionId,
           ownerId: deps.ownerId,
@@ -89,10 +95,15 @@ export function createOAuthFlowService(deps: {
       }
       await deps.secretStore.putFields(pending.ctx.accessTokenRef, fields);
 
-      if (conn.auth.kind === "oauth" && tokens.expiresAt !== undefined) {
+      if (conn.auth.kind === "oauth") {
+        // Completion marker for status derivation — written on every
+        // successful exchange, even when the provider returns no expiry.
         const updatedAuth: ConnectionAuthConfig = {
           ...conn.auth,
-          expiresAt: tokens.expiresAt,
+          connectedAt: Math.floor(Date.now() / 1000),
+          ...(tokens.expiresAt !== undefined
+            ? { expiresAt: tokens.expiresAt }
+            : {}),
         };
         await deps.repo.updateAuth(conn.id, updatedAuth);
       }

@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 
 import { api } from "../../../api.js";
 import { ACTION_FAILED, runAction } from "../../../lib/query-helpers.js";
+import { emitToast } from "../../../lib/toast.js";
 import { useStore } from "../../../store.js";
 
 /** localStorage key for per-user persistence of collapsed source ids. Per
@@ -142,7 +143,6 @@ export function SkillsPanel({
     body: "",
   });
   const [publishBusy, setPublishBusy] = useState(false);
-  const showToast = useStore((s) => s.showToast);
 
   /**
    * Ids whose collapse state is *inverted from the kind-level default*:
@@ -383,7 +383,7 @@ export function SkillsPanel({
         title: publishForm.title.trim() || undefined,
         body: publishForm.body.trim() || undefined,
       });
-      showToast({
+      emitToast({
         kind: "success",
         message: `Published ${publishFor.name}`,
         action: {
@@ -408,7 +408,7 @@ export function SkillsPanel({
           : `Failed to publish ${publishFor.name}`;
       const cta = rawMessage.match(/platform-cta:(\S+)/)?.[1];
       const message = rawMessage.replace(/\nplatform-cta:\S+/, "").trim();
-      showToast({
+      emitToast({
         kind: "error",
         message,
         action: cta
@@ -597,7 +597,7 @@ export function SkillsPanel({
         <div className="flex flex-col gap-3 border-b border-border-light p-4 anim-in">
           <input
             className={inp}
-            placeholder='Name (e.g. "Apocohq Skills")'
+            placeholder='Name (e.g. "My Skills")'
             value={addForm.name}
             onChange={(e) =>
               setAddForm((f) => ({ ...f, name: e.target.value }))
@@ -605,7 +605,7 @@ export function SkillsPanel({
           />
           <input
             className={`${inp} font-mono`}
-            placeholder="https://github.com/apocohq/skills"
+            placeholder="https://github.com/your-org/skills"
             value={addForm.gitUrl}
             onChange={(e) =>
               setAddForm((f) => ({ ...f, gitUrl: e.target.value }))

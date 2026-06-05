@@ -1,6 +1,6 @@
 # Platform topology
 
-Last verified: 2026-06-01
+Last verified: 2026-06-05
 
 ## Motivated by
 
@@ -17,7 +17,7 @@ Last verified: 2026-06-01
 - [ADR-038 — Paired agent and gateway pods](../adrs/038-paired-gateway-pod.md) — agent and gateway run in two paired pods per agent
 - [ADR-041 — Istio ambient mesh](../adrs/041-istio-ambient-mesh.md) — SPIFFE identity for every internal hop; replaces the pair-key NetworkPolicy and the trusted `x-platform-instance` header
 - [ADR-046 — Eliminate Instance, collapse into Agent](../adrs/046-eliminate-instance.md) — a single Agent ConfigMap carries both definition and runtime state; the `agent-instance` type is gone
-- [ADR-058 — API keys with scopes for headless CLI use](../adrs/058-api-keys-headless-auth.md) — the public port's bearer middleware dispatches by token prefix; JWTs and API keys share one auth slot
+- [ADR-061 — API keys with scopes for headless CLI use](../adrs/061-api-keys-headless-auth.md) — the public port's bearer middleware dispatches by token prefix; JWTs and API keys share one auth slot
 
 ## Overview
 
@@ -61,7 +61,7 @@ A TypeScript server that hosts the user-facing surface and the ACP relay. It run
 - **Public port** — user-authenticated tRPC, REST (OAuth callbacks, health, version), and the ACP relay WebSocket. The `version` endpoint is unauthenticated and powers the CLI's compatibility-floor check ([cli.md](cli.md)).
 - **Harness port** — an internal-only endpoint consumed by agent pods for trigger handoff and MCP tool calls. Not exposed outside the cluster and carries no user authentication.
 
-The api-server proxies all ACP traffic to agent pods; clients never dial pods directly. It also wakes hibernated agents on demand before forwarding the first message of a session. Both the ACP relay and the tRPC proxy verify the caller — either a Keycloak JWT or an API key ([ADR-058](../adrs/058-api-keys-headless-auth.md)), dispatched by token prefix in the same `Authorization: Bearer` slot — and check ownership at the public port, then rewrite `Authorization` to the per-agent runtime token before forwarding. Agent-runtime never sees user identity directly. See [security-and-credentials](security-and-credentials.md) and [`packages/api-server/`](../../packages/api-server/).
+The api-server proxies all ACP traffic to agent pods; clients never dial pods directly. It also wakes hibernated agents on demand before forwarding the first message of a session. Both the ACP relay and the tRPC proxy verify the caller — either a Keycloak JWT or an API key ([ADR-061](../adrs/061-api-keys-headless-auth.md)), dispatched by token prefix in the same `Authorization: Bearer` slot — and check ownership at the public port, then rewrite `Authorization` to the per-agent runtime token before forwarding. Agent-runtime never sees user identity directly. See [security-and-credentials](security-and-credentials.md) and [`packages/api-server/`](../../packages/api-server/).
 
 The public port also accepts streamed bundled file imports per agent and proxies them to the target agent-runtime without buffering — ownership-checked and size-capped at the proxy boundary.
 

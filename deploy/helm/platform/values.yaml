@@ -5,13 +5,17 @@
 # ("agent-platform.ai/...") are permanent and unrelated to brand; this
 # section is the only knob users see.
 brand:
-  # Display name shown in the UI title bar, PWA manifest, OAuth dynamic
-  # client_name, and skill-publish git author.
-  name: Dam
+  # Display name shown in the PWA manifest, OAuth dynamic client_name,
+  # skill-publish git author, and the Keycloak realm display name (sign-in
+  # heading + tab title).
+  name: DAM
   # Lowercase identifier (DNS/URL-safe). Used for the Slack slash command
   # (`/<short> login`), GitHub publish branch prefix, and git-author email
   # local-part.
   short: dam
+  # Marketing tagline shown as the browser tab title in the web app (the
+  # `name` expansion). Empty string falls back to `name`.
+  tagline: "Deploy Agents Massively"
   # UI theme — applied at runtime as CSS custom properties so a brand
   # change requires no UI rebuild.
   theme:
@@ -121,6 +125,13 @@ openshift:
     # extra capabilities).
     anyuidCapNet:
       enabled: false
+
+# -- Install the agent-platform.ai CRDs (Agent, Fork) that the controller
+# reconciles. These supersede the labeled-ConfigMap resource model (ADR-058)
+# and require cluster-admin at install time. Disable only when the CRDs are
+# managed out-of-band (e.g. a separate CRD release or GitOps).
+crds:
+  enabled: true
 
 # -- Shared local PostgreSQL instance
 # Set enabled: false when using external/cloud DBs for all services.
@@ -480,6 +491,12 @@ apiServer:
       clientId: ""
       clientSecret: ""
       appSlug: ""
+    # The Slack app must be registered out of band (Slack offers no dynamic
+    # client registration) with the platform OAuth callback as a redirect URL
+    # and the Slack MCP user-token scopes enabled.
+    slack:
+      clientId: ""
+      clientSecret: ""
 
   # -- Database connection (empty host = use shared local postgres)
   db:
@@ -710,6 +727,8 @@ agentTemplates:
     # dir + workspace (the bundle lives in the image), so the agent default
     # of 2 Gi is plenty.
     storageSize: "2Gi"
+    skillPaths:
+      - $HOME/.bob/skills/
     resources:
       requests:
         cpu: "500m"

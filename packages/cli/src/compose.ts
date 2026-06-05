@@ -1,8 +1,11 @@
 import { Command } from "commander";
 import { composeAgentModule } from "./modules/agent/compose.js";
 import { composeAuthModule } from "./modules/auth/compose.js";
+import { createBrowserOpener } from "./modules/auth/index.js";
 import { composeChatModule } from "./modules/chat/compose.js";
 import { composeCliModule } from "./modules/cli/compose.js";
+import { composeConnectionModule } from "./modules/connection/compose.js";
+import { composeEgressModule } from "./modules/egress/compose.js";
 import { composeFileModule } from "./modules/file/compose.js";
 import { composeImportModule } from "./modules/import/compose.js";
 import { composeTemplateModule } from "./modules/template/compose.js";
@@ -74,6 +77,21 @@ export function compose(opts: ComposeOptions = {}): Command {
     createAgentService: agent.exports.createService,
   });
 
+  const egress = composeEgressModule({
+    tokenProvider: auth.exports.tokenProvider,
+    configService: cli.services.configService,
+    compatService: cli.services.compatService,
+    createAgentService: agent.exports.createService,
+  });
+
+  const connection = composeConnectionModule({
+    tokenProvider: auth.exports.tokenProvider,
+    configService: cli.services.configService,
+    compatService: cli.services.compatService,
+    createAgentService: agent.exports.createService,
+    browserOpener: createBrowserOpener(),
+  });
+
   const program = new Command();
   program
     .name("dam")
@@ -87,6 +105,8 @@ export function compose(opts: ComposeOptions = {}): Command {
   for (const command of agent.commands) program.addCommand(command);
   for (const command of importModule.commands) program.addCommand(command);
   for (const command of fileModule.commands) program.addCommand(command);
+  for (const command of egress.commands) program.addCommand(command);
+  for (const command of connection.commands) program.addCommand(command);
 
   return program;
 }
