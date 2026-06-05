@@ -1,4 +1,4 @@
-# ADR-057: API keys with scopes for headless CLI use
+# ADR-058: API keys with scopes for headless CLI use
 
 **Date:** 2026-05-22
 **Status:** Accepted
@@ -16,7 +16,7 @@ CI pipelines and orchestration layers need a long-lived, server-managed, scopabl
 
 ## Decision
 
-**Introduce API Keys as a new owner-scoped credential type, with three permission scopes, and let the existing `Authorization: Bearer` slot carry either credential type — discriminated by a `pk_` prefix.** Plaintext is returned once on create and never persisted; everything at rest is a SHA-256 digest. The CLI's `DAM_TOKEN` env var continues to accept either credential type — no CLI branching.
+**Introduce API Keys as a new owner-scoped credential type, with three permission scopes, and let the existing `Authorization: Bearer` slot carry either credential type — discriminated by a `pk_` prefix.** Plaintext is returned once on create and never persisted; everything at rest is an HMAC-SHA256 digest keyed with a server-side pepper. The CLI's `DAM_TOKEN` env var continues to accept either credential type — no CLI branching.
 
 The load-bearing rules:
 
