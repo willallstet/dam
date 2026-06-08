@@ -118,7 +118,7 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: {{ include "platform.apiserver.db.password.secretName" . }}
-                  key: POSTGRES_PASSWORD
+                  key: POSTGRES_APISERVER_PASSWORD
             - name: DATABASE_URL
               value: {{ include "platform.apiserver.postgres.dsn" . | quote }}
             - name: NAMESPACE
