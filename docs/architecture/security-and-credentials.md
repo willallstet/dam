@@ -1,6 +1,6 @@
 # Security and credentials
 
-Last verified: 2026-05-29
+Last verified: 2026-06-08
 
 ## Motivated by
 
@@ -14,6 +14,7 @@ Last verified: 2026-05-29
 - [ADR-041 — Istio ambient mesh](../adrs/041-istio-ambient-mesh.md) — SPIFFE identity on the gateway-originated hops (harness, ext-authz); the gateway-admission AuthorizationPolicy is retired by ADR-042
 - [ADR-042 — Agent egress is gated by NetworkPolicy; agent is not a mesh participant](../adrs/042-agent-egress-network-policy.md) — the agent → gateway hop is gated at the kernel by per-pair NetworkPolicy; the agent has no SPIFFE identity
 - [ADR-046 — Eliminate Instance, collapse into Agent](../adrs/046-eliminate-instance.md) — per-Agent egress rules, allowed users, secret refs, and Envoy bootstrap all key on the Agent
+- [ADR-062 — Postgres role separation](../adrs/062-postgres-role-separation.md) — the bundled Postgres runs a NOSUPERUSER role per service plus a separate statement-logged DBA superuser, so a leaked app credential can neither escalate nor reach another service's database
 
 ## Overview
 
@@ -226,6 +227,32 @@ The Secret carries the SDS YAML Envoy reads via its `path_config_source`.
 Only the gateway pod mounts the Secret; the agent pod does not. See
 [`packages/api-server/src/modules/connections/infrastructure/k8s-connections-port.ts`](../../packages/api-server/src/modules/connections/infrastructure/k8s-connections-port.ts) and
 [`packages/api-server/src/modules/secrets/infrastructure/k8s-secrets-port.ts`](../../packages/api-server/src/modules/secrets/infrastructure/k8s-secrets-port.ts).
+
+## Platform database roles
+
+The credentials above are *upstream* secrets the platform injects on behalf of
+agents. The platform's own backing store has a separate credential boundary: the
+bundled Postgres splits application connection identities from DBA authority
+([ADR-062](../adrs/062-postgres-role-separation.md)). Three roles, not one:
+
+- **`platform_apiserver`** / **`platform_keycloak`** — `NOSUPERUSER` owners of
+  the `platform` and `keycloak` databases respectively, each the only role its
+  service connects as. `CONNECT` is revoked from `PUBLIC` and granted only to
+  the owning role, so a leaked api-server credential can neither read Keycloak's
+  database nor escalate (no `CREATE ROLE`, no `ALTER SYSTEM`, no RLS bypass) —
+  it can only do DDL/DML within the `platform` database it already owns.
+- **`platform_admin`** — the lone `SUPERUSER`, used only for DBA work. It is the
+  image's bootstrap superuser, because Postgres forbids demoting that role and
+  so it must be the role that is *allowed* to keep SUPERUSER, not an app role. A
+  `log_statement = 'all'` per-role default puts every statement an admin session
+  issues into the pod log for the cluster collector, while routine app traffic
+  stays out of the audit stream (the global default is `ddl`).
+
+The admin credential lives in the same `platform-postgres-secrets` Secret and
+must be treated as high-value. The statement audit is best-effort, not enforced
+— a superuser session can `SET log_statement` mid-session (see the ADR's
+Consequences). Operational details (fresh install, existing-cluster migration)
+are in the [runbook](../notes/postgres-role-operations.md).
 
 ## Envoy credential injection
 
