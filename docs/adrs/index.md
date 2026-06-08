@@ -66,6 +66,7 @@ This directory contains ADRs for the Platform project.
 | [059](059-agent-readiness-status.md)          | Agent readiness is controller-computed status — agent ∧ gateway | @jezekra1 |
 | [060](060-unified-apply-path-and-contributions-settled-gate.md) | Unified runtime-channel apply path + settlement tracking (single worker, Ready-gated dispatch, retry + degraded badge) | @janjeliga |
 | [061](061-warm-pvc-pool.md)                   | Warm PVC pool — pre-provisioned size-keyed spare workspace volumes claimed at agent create | @pilartomas |
+| [062](062-postgres-role-separation.md)        | No SUPERUSER on Postgres app roles — three-way role split with a statement-logged DBA role | @pilartomas |
 
 ## Drafts
 
