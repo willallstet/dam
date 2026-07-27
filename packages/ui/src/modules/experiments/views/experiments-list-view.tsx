@@ -88,6 +88,7 @@ function toLineages(summaries: ExperimentDriverSummary[]): LineageRow[] {
 export function ExperimentsListView() {
   const { data } = useDriverSummaries();
   const selectAgent = useStore((s) => s.selectAgent);
+  const navigateToCreateSandbox = useStore((s) => s.navigateToCreateSandbox);
   const agents = useAgentsList();
   const agentName = new Map(agents.map((a) => [a.id, a.name]));
   const deleteExperiment = useDeleteExperiment();
@@ -103,6 +104,9 @@ export function ExperimentsListView() {
       <PageHeader
         title="Experiments"
         description="Loop scripts the platform observes live. Open one to land in its agent's chat — the experiment graph docks beside the conversation."
+        actions={
+          <Button onClick={navigateToCreateSandbox}>New experiment</Button>
+        }
       />
 
       {!initialLoaded && <ListSkeleton rows={3} rowHeight={72} />}
